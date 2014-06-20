@@ -1,0 +1,42 @@
+#! /usr/bin/perl -w
+
+use strict;
+use Fcntl 'SEEK_SET';
+
+# Read Pintos.pm from the same directory as this program.
+BEGIN { my $self = $0; $self =~ s%/+[^/]*$%%; require "$self/Pintos.pm"; }
+
+# Get command-line arguments.
+usage (0) if @ARGV == 1 && $ARGV[0] eq '--help';
+usage (1) if @ARGV < 2 || $ARGV[1] ne '--';
+my ($disk, undef, @kernel_args) = @ARGV;
+
+# Open disk.
+my ($handle);
+open ($handle, '+<', $disk) or die "$disk: open: $!\n";
+
+# Check that it's a partitioned disk with a Pintos loader.
+my ($buffer) = read_fully ($handle, $disk, 512);
+unpack ("x510 v", $buffer) == 0xaa55 or die "$disk: not a partitioned disk\n";
+$buffer =~ /Pintos/ or die "$disk: does not contain Pintos loader\n";
+
+# Write the command line.
+our ($LOADER_SIZE);
+sysseek ($handle, $LOADER_SIZE, SEEK_SET) == $LOADER_SIZE
+  or die "$disk: seek: $!\n";
+write_fully ($handle, $disk, make_kernel_command_line (@kernel_args));
+
+# Close disk.
+close ($handle) or die "$disk: close: $!\n";
+
+exit 0;
+
+sub usage {
+    print <<'EOF';
+pintos-set-cmdline, a utility for changing the command line in Pintos disks
+Usage: pintos-set-cmdline DISK -- [ARGUMENT...]
+where DISK is a bootable disk containing a Pintos loader
+  and each ARGUMENT is inserted into the command line written to DISK.
+EOF
+    exit ($_[0]);
+}

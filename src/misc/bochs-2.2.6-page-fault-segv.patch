@@ -1,0 +1,79 @@
+Index: bochs-2.2.6/cpu/exception.cc
+diff -u bochs-2.2.6/cpu/exception.cc\~ bochs-2.2.6/cpu/exception.cc
+--- bochs-2.2.6/cpu/exception.cc~ 2006-09-28 15:51:39.000000000 -0700
++++ bochs-2.2.6/cpu/exception.cc 2006-12-08 11:14:33.000000000 -0800
+@@ -1033,6 +1033,10 @@ void BX_CPU_C::exception(unsigned vector
+     BX_CPU_THIS_PTR curr_exception[0] = exception_type;
+   }
+ 
++#if BX_GDBSTUB
++  bx_gdbstub_exception(vector);
++#endif
++
+ #if BX_CPU_LEVEL >= 2
+   if (!real_mode()) {
+     BX_CPU_THIS_PTR interrupt(vector, 0, push_error, error_code);
+Index: bochs-2.2.6/gdbstub.cc
+diff -u bochs-2.2.6/gdbstub.cc\~ bochs-2.2.6/gdbstub.cc
+--- bochs-2.2.6/gdbstub.cc~ 2006-09-28 15:51:39.000000000 -0700
++++ bochs-2.2.6/gdbstub.cc 2006-12-08 11:12:03.000000000 -0800
+@@ -26,6 +26,7 @@ static int last_stop_reason = GDBSTUB_ST
+ #define GDBSTUB_EXECUTION_BREAKPOINT    (0xac1)
+ #define GDBSTUB_TRACE                   (0xac2)
+ #define GDBSTUB_USER_BREAK              (0xac3)
++#define GDBSTUB_EXCEPTION_0E            (0xac4)
+ 
+ static int listen_socket_fd;
+ static int socket_fd;
+@@ -271,6 +272,12 @@ int bx_gdbstub_check(unsigned int eip)
+    return(GDBSTUB_STOP_NO_REASON);
+ }
+ 
++void bx_gdbstub_exception(unsigned int nr) 
++{
++    if (nr == 0x0e)
++        last_stop_reason = GDBSTUB_EXCEPTION_0E;
++}
++
+ static int remove_breakpoint(unsigned int addr, int len)
+ {
+    unsigned int i;
+@@ -452,6 +459,10 @@ static void debug_loop(void)
+                    {
+                       write_signal(&buf[1], SIGTRAP);
+                    }
++                 else if (last_stop_reason == GDBSTUB_EXCEPTION_0E)
++                   {
++                      write_signal(&buf[1], SIGSEGV);
++                   }
+                  else
+                    {
+                       write_signal(&buf[1], 0);
+@@ -476,10 +487,14 @@ static void debug_loop(void)
+                    {
+                       write_signal(&buf[1], SIGTRAP);
+                    }
+-                 else
++                 else if (last_stop_reason == GDBSTUB_EXCEPTION_0E)
+                    {
+                       write_signal(&buf[1], SIGSEGV);
+                    }
++                 else
++                   {
++                      write_signal(&buf[1], 0);
++                   }
+                  put_reply(buf);
+                  break;
+               }
+Index: bochs-2.2.6/bochs.h
+diff -u bochs-2.2.6/bochs.h\~ bochs-2.2.6/bochs.h
+--- bochs-2.2.6/bochs.h~ 2006-09-28 15:51:39.000000000 -0700
++++ bochs-2.2.6/bochs.h 2006-12-08 11:14:19.000000000 -0800
+@@ -375,6 +375,7 @@ BOCHSAPI extern logfunc_t *genlog;
+ // defines for GDB stub
+ void bx_gdbstub_init(int argc, char* argv[]);
+ int bx_gdbstub_check(unsigned int eip);
++void bx_gdbstub_exception(unsigned int nr);
+ #define GDBSTUB_STOP_NO_REASON   (0xac0)
+ 
+ #if BX_SUPPORT_SMP

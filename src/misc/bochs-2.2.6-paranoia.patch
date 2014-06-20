@@ -1,0 +1,19 @@
+Index: bochs-2.2.6/iodev/hdimage.h
+diff -u bochs-2.2.6/iodev/hdimage.h\~ bochs-2.2.6/iodev/hdimage.h
+--- bochs-2.2.6/iodev/hdimage.h~ 2005-11-06 03:07:01.000000000 -0800
++++ bochs-2.2.6/iodev/hdimage.h 2006-09-28 15:55:50.000000000 -0700
+@@ -273,14 +273,8 @@ class sparse_image_t : public device_ima
+ 
+  void panic(const char * message);
+  off_t
+-#ifndef PARANOID
+-       sparse_image_t::
+-#endif
+                        get_physical_offset();
+  void
+-#ifndef PARANOID
+-       sparse_image_t::
+-#endif
+                        set_virtual_page(Bit32u new_virtual_page);
+  void read_header();
+  ssize_t read_page_fragment(Bit32u read_virtual_page, Bit32u read_page_offset, size_t read_size, void * buf);

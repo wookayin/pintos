@@ -1,0 +1,152 @@
+#
+# A set of useful macros that can help debug Pintos.
+#
+# Include with "source" cmd in gdb.
+# Use "help user-defined" for help.
+#
+# Author: Godmar Back <gback@cs.vt.edu>, Feb 2006
+#
+# $Id: gdb-macros,v 1.1 2006-04-07 18:29:34 blp Exp $
+#
+
+# for internal use
+define offsetof
+    set $rc = (char*)&((struct $arg0 *)0)->$arg1 - (char*)0
+end
+
+define list_entry
+    offsetof $arg1 $arg2
+    set $rc = ((struct $arg1 *) ((uint8_t *) ($arg0) - $rc))
+end
+
+# dump a Pintos list
+define dumplist
+    set $list = $arg0
+    set $e = $list->head.next
+    set $i = 0
+    while $e != &(($arg0).tail)
+        list_entry $e $arg1 $arg2
+        set $l = $rc
+        printf "pintos-debug: dumplist #%d: %p ", $i++, $l
+        output *$l
+        set $e = $e->next
+        printf "\n"
+    end
+end
+
+document dumplist
+    Dump the content of a Pintos list, 
+    invoke as dumplist name_of_list name_of_struct name_of_elem_in_list_struct
+end
+
+# print a thread's backtrace, given a pointer to the struct thread *
+define btthread
+   if $arg0 == ($esp - ((unsigned)$esp % 4096)) 
+	bt
+   else
+       set $saveEIP = $eip 
+       set $saveESP = $esp 
+       set $saveEBP = $ebp 
+
+       set $esp = ((struct thread *)$arg0)->stack
+       set $ebp = ((void**)$esp)[2]
+       set $eip = ((void**)$esp)[4]
+
+       bt
+
+       set $eip = $saveEIP
+       set $esp = $saveESP
+       set $ebp = $saveEBP
+   end
+end
+document btthread
+    Show the backtrace of a thread,
+    invoke as btthread pointer_to_struct_thread
+end
+
+# print backtraces associated with all threads in a list
+define btthreadlist
+    set $list = $arg0
+    set $e = $list->head.next
+    while $e != &(($arg0).tail)
+        list_entry $e thread $arg1
+        printf "pintos-debug: dumping backtrace of thread '%s' @%p\n", \
+                ((struct thread*)$rc)->name, $rc
+        btthread $rc
+        set $e = $e->next
+        printf "\n"
+    end
+end
+document btthreadlist
+    Given a list of threads, print each thread's backtrace
+    invoke as btthreadlist name_of_list name_of_elem_in_list_struct
+end
+
+# print backtraces of all threads (based on 'all_list' all threads list)
+define btthreadall
+    btthreadlist all_list allelem
+end
+document btthreadall
+    Print backtraces of all threads
+end
+
+# print a correct backtrace by adjusting $eip
+# this works best right at intr0e_stub
+define btpagefault
+    set $saveeip = $eip
+    set $eip = ((void**)$esp)[1]
+    backtrace
+    set $eip = $saveeip
+end
+document btpagefault
+    Print a backtrace of the current thread after a pagefault
+end
+
+# invoked whenever the program stops
+define hook-stop
+    # stopped at stub #0E = #14 (page fault exception handler stub)
+    if ($eip == intr0e_stub)
+        set $savedeip = ((void**)$esp)[1]
+        # if this was in user mode, the OS should handle it
+        # either handle the page fault or terminate the process
+        if ($savedeip < 0xC0000000)
+            printf "pintos-debug: a page fault exception occurred in user mode\n"
+            printf "pintos-debug: hit 'c' to continue, or 's' to step to intr_handler\n"
+        else
+            # if this was in kernel mode, a stack trace might be useful
+            printf "pintos-debug: a page fault occurred in kernel mode\n"
+            btpagefault
+        end
+    end
+end
+
+# load symbols for a Pintos user program
+define loadusersymbols
+    shell objdump -h $arg0 | awk '/.text/ { print "add-symbol-file $arg0 0x"$4 }' > .loadsymbols
+    source .loadsymbols
+    shell rm -f .loadsymbols
+end
+document loadusersymbols
+    Load the symbols contained in a user program's executable.
+    Example:
+        loadusersymbols tests/userprog/exec-multiple
+end
+
+define debugpintos
+    target remote localhost:1234
+end
+document debugpintos
+    Attach debugger to pintos process
+end
+
+define show-mem-bitmap
+	printf "Kernel :\n"
+	x/12x kernel_pool.used_map.bits
+	printf "User :\n"
+	x/12x user_pool.used_map.bits
+	printf "Swap :\n"
+	x/32x swap.used_map.bits
+end
+document debugpintos
+    Print memory bitmap info
+end

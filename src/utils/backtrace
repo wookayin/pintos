@@ -1,0 +1,106 @@
+#! /usr/bin/perl -w
+
+use strict;
+
+# Check command line.
+if (grep ($_ eq '-h' || $_ eq '--help', @ARGV)) {
+    print <<'EOF';
+backtrace, for converting raw addresses into symbolic backtraces
+usage: backtrace [BINARY]... ADDRESS...
+where BINARY is the binary file or files from which to obtain symbols
+ and ADDRESS is a raw address to convert to a symbol name.
+
+If no BINARY is unspecified, the default is the first of kernel.o or
+build/kernel.o that exists.  If multiple binaries are specified, each
+symbol printed is from the first binary that contains a match.
+
+The ADDRESS list should be taken from the "Call stack:" printed by the
+kernel.  Read "Backtraces" in the "Debugging Tools" chapter of the
+Pintos documentation for more information.
+EOF
+    exit 0;
+}
+die "backtrace: at least one argument required (use --help for help)\n"
+    if @ARGV == 0;
+
+# Drop garbage inserted by kernel.
+@ARGV = grep (!/^(call|stack:?|[-+])$/i, @ARGV);
+s/\.$// foreach @ARGV;
+
+# Find binaries.
+my (@binaries);
+while ($ARGV[0] !~ /^0x/) {
+    my ($bin) = shift @ARGV;
+    die "backtrace: $bin: not found (use --help for help)\n" if ! -e $bin;
+    push (@binaries, $bin);
+}
+if (!@binaries) {
+    my ($bin);
+    if (-e 'kernel.o') {
+	$bin = 'kernel.o';
+    } elsif (-e 'build/kernel.o') {
+	$bin = 'build/kernel.o';
+    } else {
+	die "backtrace: no binary specified and neither \"kernel.o\" nor \"build/kernel.o\" exists (use --help for help)\n";
+    }
+    push (@binaries, $bin);
+}
+
+# Find addr2line.
+my ($a2l) = search_path ("i386-elf-addr2line") || search_path ("addr2line");
+if (!$a2l) {
+    die "backtrace: neither `i386-elf-addr2line' nor `addr2line' in PATH\n";
+}
+sub search_path {
+    my ($target) = @_;
+    for my $dir (split (':', $ENV{PATH})) {
+	my ($file) = "$dir/$target";
+	return $file if -e $file;
+    }
+    return undef;
+}
+
+# Figure out backtrace.
+my (@locs) = map ({ADDR => $_}, @ARGV);
+for my $bin (@binaries) {
+    open (A2L, "$a2l -fe $bin " . join (' ', map ($_->{ADDR}, @locs)) . "|");
+    for (my ($i) = 0; <A2L>; $i++) {
+	my ($function, $line);
+	chomp ($function = $_);
+	chomp ($line = <A2L>);
+	next if defined $locs[$i]{BINARY};
+
+	if ($function ne '??' || $line ne '??:0') {
+	    $locs[$i]{FUNCTION} = $function;
+	    $locs[$i]{LINE} = $line;
+	    $locs[$i]{BINARY} = $bin;
+	}
+    }
+    close (A2L);
+}
+
+# Print backtrace.
+my ($cur_binary);
+for my $loc (@locs) {
+    if (defined ($loc->{BINARY})
+	&& @binaries > 1
+	&& (!defined ($cur_binary) || $loc->{BINARY} ne $cur_binary)) {
+	$cur_binary = $loc->{BINARY};
+	print "In $cur_binary:\n";
+    }
+
+    my ($addr) = $loc->{ADDR};
+    $addr = sprintf ("0x%08x", hex ($addr)) if $addr =~ /^0x[0-9a-f]+$/i;
+
+    print $addr, ": ";
+    if (defined ($loc->{BINARY})) {
+	my ($function) = $loc->{FUNCTION};
+	my ($line) = $loc->{LINE};
+	$line =~ s/^(\.\.\/)*//;
+	$line = "..." . substr ($line, -25) if length ($line) > 28;
+	print "$function ($line)";
+    } else {
+	print "(unknown)";
+    }
+    print "\n";
+}

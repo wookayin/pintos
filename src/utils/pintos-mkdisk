@@ -1,0 +1,134 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings;
+use POSIX;
+use Getopt::Long qw(:config bundling);
+use Fcntl 'SEEK_SET';
+
+# Read Pintos.pm from the same directory as this program.
+BEGIN { my $self = $0; $self =~ s%/+[^/]*$%%; require "$self/Pintos.pm"; }
+
+our ($disk_fn);			# Output disk file name.
+our (%parts);			# Partitions.
+our ($format);			# "partitioned" (default) or "raw"
+our (%geometry);		# IDE disk geometry.
+our ($align);			# Align partitions on cylinders?
+our ($loader_fn);		# File name of loader.
+our ($include_loader);		# Include loader?
+our (@kernel_args);		# Kernel arguments.
+
+if (grep ($_ eq '--', @ARGV)) {
+    @kernel_args = @ARGV;
+    @ARGV = ();
+    while ((my $arg = shift (@kernel_args)) ne '--') {
+	push (@ARGV, $arg);
+    }
+}
+
+GetOptions ("h|help" => sub { usage (0); },
+
+	    "kernel=s" => \&set_part,
+	    "filesys=s" => \&set_part,
+	    "scratch=s" => \&set_part,
+	    "swap=s" => \&set_part,
+
+	    "filesys-size=s" => \&set_part,
+	    "scratch-size=s" => \&set_part,
+	    "swap-size=s" => \&set_part,
+
+	    "kernel-from=s" => \&set_part,
+	    "filesys-from=s" => \&set_part,
+	    "scratch-from=s" => \&set_part,
+	    "swap-from=s" => \&set_part,
+
+	    "format=s" => \$format,
+	    "loader:s" => \&set_loader,
+	    "no-loader" => \&set_no_loader,
+	    "geometry=s" => \&set_geometry,
+	    "align=s" => \&set_align)
+  or exit 1;
+usage (1) if @ARGV != 1;
+
+$disk_fn = $ARGV[0];
+die "$disk_fn: already exists\n" if -e $disk_fn;
+
+# Sets the loader to copy to the MBR.
+sub set_loader {
+    die "can't specify both --loader and --no-loader\n"
+      if defined ($include_loader) && !$include_loader;
+    $include_loader = 1;
+    $loader_fn = $_[1] if $_[1] ne '';
+}
+
+# Disables copying a loader to the MBR.
+sub set_no_loader {
+    die "can't specify both --loader and --no-loader\n"
+      if defined ($include_loader) && $include_loader;
+    $include_loader = 0;
+}
+
+# Figure out whether to include a loader.
+$include_loader = exists ($parts{KERNEL}) && $format eq 'partitioned'
+  if !defined ($include_loader);
+die "can't write loader to raw disk\n" if $include_loader && $format eq 'raw';
+die "can't write command-line arguments without --loader or --kernel\n"
+  if @kernel_args && !$include_loader;
+print STDERR "warning: --loader only makes sense without --kernel "
+  . "if this disk will be used to load a kernel from another disk\n"
+  if $include_loader && !exists ($parts{KERNEL});
+
+# Open disk.
+my ($disk_handle);
+open ($disk_handle, '>', $disk_fn) or die "$disk_fn: create: $!\n";
+
+# Read loader.
+my ($loader);
+$loader = read_loader ($loader_fn) if $include_loader;
+
+# Write disk.
+my (%disk) = %parts;
+$disk{DISK} = $disk_fn;
+$disk{HANDLE} = $disk_handle;
+$disk{ALIGN} = $align;
+$disk{GEOMETRY} = %geometry;
+$disk{FORMAT} = $format;
+$disk{LOADER} = $loader;
+$disk{ARGS} = \@kernel_args;
+assemble_disk (%disk);
+
+# Done.
+exit 0;
+
+sub usage {
+    print <<'EOF';
+pintos-mkdisk, a utility for creating Pintos virtual disks
+Usage: pintos-mkdisk [OPTIONS] DISK [-- ARGUMENT...]
+where DISK is the virtual disk to create,
+      each ARGUMENT is inserted into the command line written to DISK,
+  and each OPTION is one of the following options.
+Partition options: (where PARTITION is one of: kernel filesys scratch swap)
+  --PARTITION=FILE         Use a copy of FILE for the given PARTITION
+  --PARTITION-size=SIZE    Create an empty PARTITION of the given SIZE in MB
+  --PARTITION-from=DISK    Use of a copy of the given PARTITION in DISK
+  (There is no --kernel-size option.)
+Output disk options:
+  --format=partitioned     Write partition table to output (default)
+  --format=raw             Do not write partition table to output
+  (Pintos can only use partitioned disks.)
+Partitioned format output options:
+  --loader[=FILE]          Get bootstrap loader from FILE (default: loader.bin
+                           if --kernel option is specified, empty otherwise)
+  --no-loader              Do not include a bootstrap loader
+  --geometry=H,S           Use H head, S sector geometry (default: 16, 63)
+  --geometry=zip           Use 64 head, 32 sector geometry for USB-ZIP boot
+                           per http://syslinux.zytor.com/usbkey.php
+  --align=bochs            Round size to cylinder for Bochs support (default)
+  --align=full             Align partition boundaries to cylinder boundary to
+                           let fdisk guess correct geometry and quiet warnings
+  --align=none             Don't align partitions at all, to save space
+Other options:
+  -h, --help               Display this help message.
+EOF
+    exit ($_[0]);
+}

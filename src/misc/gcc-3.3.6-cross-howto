@@ -1,0 +1,39 @@
+Here are the commands we used to build and install the SPARC
+cross-compiler:
+
+PINTOSROOT=$HOME/private/pintos
+
+PREFIX=/usr/class/cs140/`uname -m`
+PATH=$PATH:$PREFIX/bin
+TMP=`pwd`
+
+wget ftp://ftp.gnu.org/pub/gnu/binutils/binutils-2.15.tar.bz2
+wget ftp://sources.redhat.com/pub/newlib/newlib-1.13.0.tar.gz
+wget ftp://ftp.gnu.org/pub/gnu/gcc/gcc-3.3.6/gcc-core-3.3.6.tar.bz2
+wget ftp://ftp.gnu.org/pub/gnu/gdb/gdb-6.3.tar.bz2
+
+bzcat binutils-2.15.tar.bz2 | tar x
+tar xzf newlib-1.13.0.tar.gz
+bzcat gcc-core-3.3.6.tar.bz2 | tar x
+bzcat gdb-6.3.tar.bz2 | tar x
+
+cd $TMP/binutils-2.15
+mkdir i386
+cd i386
+../configure --target=i386-elf --prefix=$PREFIX
+make LDFLAGS=-lintl
+make install
+
+cd $TMP/gcc-3.3.6
+mkdir i386
+cd i386
+../configure --target=i386-elf --prefix=$PREFIX --with-gnu-as --with-as=$PREFIX/bin/i386-elf-as --with-gnu-ld --with-ld=$PREFIX/bin/i386-elf-ld --with-headers=$TMP/newlib-1.13.0/newlib/libc/include --with-newlib
+make
+make install
+
+cd $TMP/gdb-6.3
+mkdir i386
+cd i386
+../configure --target=i386-elf --prefix=$PREFIX --disable-tui
+make LDFLAGS=-lintl
+make install

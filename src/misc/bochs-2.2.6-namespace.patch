@@ -1,0 +1,10 @@
+--- bochs-2.2.6/bx_debug/symbols.cc	2011-08-19 11:04:11.760139836 -0600
++++ bochs-2.2.6-patched/bx_debug/symbols.cc	2011-08-19 11:04:04.980139837 -0600
+@@ -92,6 +92,7 @@
+ #endif
+ 
+ using namespace std;
++namespace std { using namespace __gnu_cxx; }
+ 
+ struct symbol_entry_t
+ {

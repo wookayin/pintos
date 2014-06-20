@@ -1,0 +1,11 @@
+--- bochs-2.2.6.orig/Makefile.in	2006-04-03 16:34:51.170387000 -0700
++++ bochs-2.2.6/Makefile.in	2006-04-03 16:34:57.480303000 -0700
+@@ -93,7 +93,7 @@
+ CFLAGS = @CFLAGS@ @GUI_CFLAGS@ $(MCH_CFLAGS) $(FLA_FLAGS) @DEFINE_PLUGIN_PATH@ -DBX_SHARE_PATH='"$(sharedir)"'
+ CXXFLAGS = @CXXFLAGS@ @GUI_CXXFLAGS@ $(MCH_CFLAGS) $(FLA_FLAGS) @DEFINE_PLUGIN_PATH@ -DBX_SHARE_PATH='"$(sharedir)"'
+ 
+-LDFLAGS = @LDFLAGS@
++LDFLAGS = @LDFLAGS@ -lsocket
+ LIBS = @LIBS@
+ # To compile with readline:
+ #   linux needs just -lreadline

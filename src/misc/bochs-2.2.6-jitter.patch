@@ -1,0 +1,61 @@
+diff -urp bochs-2.2.6/iodev/pit82c54.cc bochs-2.2.6.orig/iodev/pit82c54.cc
+--- bochs-2.2.6.orig/iodev/pit82c54.cc	2006-01-08 12:39:08.000000000 -0800
++++ bochs-2.2.6/iodev/pit82c54.cc	2006-04-03 14:00:27.000000000 -0700
+@@ -28,6 +28,7 @@
+ 
+ #include "iodev.h"
+ #include "pit82c54.h"
++#include <stdlib.h>
+ #define LOG_THIS this->
+ 
+ 
+@@ -359,7 +360,13 @@
+       case 2:
+ 	if(thisctr.count_written) {
+ 	  if(thisctr.triggerGATE || thisctr.first_pass) {
+-	    set_count(thisctr, thisctr.inlatch);
++            unsigned n = thisctr.inlatch;
++            if (jitter && n > 5) {
++                n *= (double) rand() / RAND_MAX;
++                if (n < 5)
++                    n = 5;
++            }
++	    set_count(thisctr, n);
+ 	    thisctr.next_change_time=(thisctr.count_binary-1) & 0xFFFF;
+ 	    thisctr.null_count=0;
+ 	    if(thisctr.inlatch==1) {
+diff -urp bochs-2.2.6/main.cc bochs-2.2.6.orig/main.cc
+--- bochs-2.2.6.orig/main.cc	2006-01-22 04:31:15.000000000 -0800
++++ bochs-2.2.6/main.cc	2006-04-03 14:00:54.000000000 -0700
+@@ -105,6 +105,7 @@
+ #endif
+ 
+ char *bochsrc_filename = NULL;
++int jitter = 0;
+ 
+ void bx_print_header ()
+ {
+@@ -459,6 +460,13 @@
+     else if (!strcmp ("-q", argv[arg])) {
+       SIM->get_param_enum(BXP_BOCHS_START)->set (BX_QUICK_START);
+     }
++    else if (!strcmp ("-j", argv[arg])) {
++      if (++arg >= argc) BX_PANIC(("-j must be followed by a number"));
++      else {
++        jitter = 1;
++        srand (atoi (argv[arg]));
++      }
++    }
+     else if (!strcmp ("-f", argv[arg])) {
+       if (++arg >= argc) BX_PANIC(("-f must be followed by a filename"));
+       else bochsrc_filename = argv[arg];
+diff -up /home/blp/cs140/bochs-2.2.6/bochs.h\~ /home/blp/cs140/bochs-2.2.6/bochs.h
+--- bochs-2.2.6/bochs.h.orig	2006-01-28 08:16:02.000000000 -0800
++++ bochs-2.2.6/bochs.h	2006-04-03 14:03:54.000000000 -0700
+@@ -698,4 +698,6 @@ int bx_init_hardware ();
+ 
+ #endif
+ 
++extern int jitter;
++
+ #endif  /* BX_BOCHS_H */

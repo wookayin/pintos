@@ -1,0 +1,57 @@
+diff -u bochs-2.2.6.orig/cpu/exception.cc bochs-2.2.6/cpu/exception.cc
+--- bochs-2.2.6.orig/cpu/exception.cc
++++ bochs-2.2.6/cpu/exception.cc
+@@ -841,6 +841,13 @@ void BX_CPU_C::exception(unsigned vector
+ 
+   BX_CPU_THIS_PTR errorno++;
+   if (BX_CPU_THIS_PTR errorno >= 3) {
++#if BX_GDBSTUB
++    if (bx_dbg.gdbstub_enabled) {
++        fprintf(stderr, "Triple fault: stopping for gdb\n");
++        BX_CPU_THIS_PTR ispanic = 1;
++        longjmp(BX_CPU_THIS_PTR jmp_buf_env, 1);
++    }
++#endif
+ #if BX_RESET_ON_TRIPLE_FAULT
+     BX_ERROR(("exception(): 3rd (%d) exception with no resolution, shutdown status is %02xh, resetting", vector, DEV_cmos_get_reg(0x0f)));
+     debug(BX_CPU_THIS_PTR prev_eip);
+@@ -860,6 +867,13 @@ void BX_CPU_C::exception(unsigned vector
+ 
+   /* if 1st was a double fault (software INT?), then shutdown */
+   if ( (BX_CPU_THIS_PTR errorno==2) && (BX_CPU_THIS_PTR curr_exception[0]==BX_ET_DOUBLE_FAULT) ) {
++#if BX_GDBSTUB
++    if (bx_dbg.gdbstub_enabled) {
++        fprintf(stderr, "Triple fault: stopping for gdb\n");
++        BX_CPU_THIS_PTR ispanic = 1;
++        longjmp(BX_CPU_THIS_PTR jmp_buf_env, 1);
++    }
++#endif
+ #if BX_RESET_ON_TRIPLE_FAULT
+     BX_INFO(("exception(): triple fault encountered, shutdown status is %02xh, resetting", DEV_cmos_get_reg(0x0f)));
+     debug(BX_CPU_THIS_PTR prev_eip);
+diff -u bochs-2.2.6.orig/gdbstub.cc bochs-2.2.6/gdbstub.cc
+--- bochs-2.2.6.orig/gdbstub.cc
++++ bochs-2.2.6/gdbstub.cc
+@@ -466,19 +466,19 @@ static void debug_loop(void)
+                  
+                  BX_INFO (("stepping"));
+                  stub_trace_flag = 1;
++                 bx_cpu.ispanic = 0;
+                  bx_cpu.cpu_loop(-1);
+                  DEV_vga_refresh();
+                  stub_trace_flag = 0;
+                  BX_INFO (("stopped with %x", last_stop_reason));
+                  buf[0] = 'S';
+-                 if (last_stop_reason == GDBSTUB_EXECUTION_BREAKPOINT ||
+-                     last_stop_reason == GDBSTUB_TRACE)
++                 if (last_stop_reason == GDBSTUB_TRACE && !bx_cpu.ispanic)
+                    {
+                       write_signal(&buf[1], SIGTRAP);
+                    }
+                  else
+                    {
+-                      write_signal(&buf[1], SIGTRAP);
++                      write_signal(&buf[1], SIGSEGV);
+                    }
+                  put_reply(buf);
+                  break;

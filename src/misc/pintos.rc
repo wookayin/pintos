@@ -1,0 +1,59 @@
+######### PINTOS Macro #########
+
+# Root directory which has /src as its child 
+export PINTOS_DIR='/home/you_may_edit_here/pintos'
+
+# USED emulator. 'bochs'(Project1) or 'qmenu'(Project2,3,4)
+export TEST_EMUL='bochs'
+
+# Current project. One of 'threads' 'userprog' 'vm' 'filesys'
+export PINTOS_PRJ='threads'
+
+# Test directory. One of 'threads' 'userprog' 'vm' 'filesys/extended'
+export TEST_DIR='threads'
+
+# Test item
+export TEST_ITEM='alarm-multiple'
+
+# Additional test file like 'child-simple' 'tar' ...
+export ADD_TEST_FILE='child-simple'
+
+
+# Usage
+#   --- used commonly
+#   gop : got to the current project build directory
+#   editrc : to modify this file
+#   applyrc : to apply this file
+#
+#   runitem : run a test item
+#   checkitem : check a test item and get result (pass or FAIL)
+#
+#   debugitem : start pintos with gdb mode and run a test item
+#   debugpintos : start gdb at the build directory.
+#
+#   --- used at Project2,3,4
+#   makedisk : make new disks (filesys.dsk, swap.dsk)
+#   copyitem : FORMAT the disk and copy a user test program to filesys.dsk
+#   copyadd : copy additional test program to filesys.dsk
+#   copysample : copy sample.txt file to filesys.dsk
+#
+#   --- used at Project4
+#   debugcopy : start pintos for tracing formatting and copying operation
+#   debugtar : start pintos for tracing tar opeation
+#
+# Well, you don't need to touch below without special reason.
+export PATH=$PINTOS_DIR/src/utils/:$PATH
+alias gop='cd $PINTOS_DIR/src/$PINTOS_PRJ;cd build'
+alias editrc='vi ~/.pintosrc'
+alias applyrc='source ~/.pintosrc'
+alias runitem='pintos --$TEST_EMUL -- -q run $TEST_ITEM'
+alias checkitem='make tests/$TEST_DIR/$TEST_ITEM.result'
+alias debugitem='pintos --$TEST_EMUL --gdb -- run $TEST_ITEM'
+alias debugpintos='pintos-gdb kernel.o'
+alias makedisk='pintos-mkdisk filesys.dsk --filesys-size=2;pintos-mkdisk swap.dsk --swap-size=4'
+alias copyitem='pintos -p tests/$TEST_DIR/$TEST_ITEM -a $TEST_ITEM -- -f -q'
+alias copyadd='pintos -p tests/$TEST_DIR/$ADD_TEST_FILE -a $ADD_TEST_FILE -- -q'
+alias copysample='pintos -p ../../tests/$TEST_DIR/sample.txt -a sample.txt -- -q'
+alias debugcopy='pintos -p tests/$TEST_DIR/$TEST_ITEM -a $TEST_ITEM --gdb --$TEST_EMUL -- -f -q'
+alias debugtar='pintos --$TEST_EMUL --gdb -- -q run "tar fs.tar /"'
+
