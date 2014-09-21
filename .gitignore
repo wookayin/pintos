@@ -1,2 +1,2 @@
-bochs-2.*
-qemu-1.*
+bochs-[0-9].*
+qemu-[0-9].*
