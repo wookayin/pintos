@@ -74,6 +74,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+void thread_awake (int64_t current_tick);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -123,9 +125,12 @@ thread_start (void)
 }
 
 /* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+   Thus, this function runs in an external interrupt context.
+
+   The parameter 'tick' is the current tick count held by
+   the timer device. */
 void
-thread_tick (void)
+thread_tick (int64_t tick)
 {
   struct thread *t = thread_current ();
 
@@ -139,10 +144,39 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  /* Wake any thread whose ticks_end has been expired. */
+  thread_awake (tick);
+
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
+
+/* Wake up all sleeping threads whose ticks_end has been expired,
+   removing from the wait queue and pushing it into the ready queue.
+
+   This function must be called with interrupts turned off. */
+void
+thread_awake (int64_t current_tick) {
+  struct list_elem *e;
+
+  // interrupt level check
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  // enumerate all threads in wait queue
+  for (e = list_begin (&wait_list); e != list_end (&wait_list); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, waitelem);
+      if (t->sleep_endtick <= current_tick) {
+        /* sleep is expired. awake up t */
+        t->sleep_endtick = 0;
+        list_remove (&t->waitelem);
+        // Add to run queue.
+        thread_unblock (t);
+      }
+    }
+}
+
 
 /* Prints thread statistics. */
 void
