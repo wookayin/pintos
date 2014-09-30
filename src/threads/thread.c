@@ -102,6 +102,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->sleep_endtick = 0; // a dummy value
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -207,6 +208,25 @@ thread_create (const char *name, int priority,
 
   return tid;
 }
+
+/* Make the current thread T to sleep, until the timer ticks
+   reaches 'ticks_end'.
+
+   It subsequently calls thread_block(), making T sleep actually.
+   This function must be called with interrupts turned off. */
+void
+thread_sleep_until (int64_t ticks_end)
+{
+  struct thread *t = thread_current();
+  t->sleep_endtick = ticks_end;
+
+  // put T into the wait queue
+  list_push_back (&wait_list, &t->waitelem);
+
+  // make the current thread block (sleeped)
+  thread_block();
+}
+
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -466,6 +486,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->sleep_endtick = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

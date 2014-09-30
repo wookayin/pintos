@@ -92,8 +92,13 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks)
-    thread_yield ();
+  enum intr_level old_level = intr_disable ();
+
+  // sleep the thread for `ticks` seconds,
+  // until the tick becomes [start + ticks]
+  thread_sleep_until (start + ticks);
+
+  intr_set_level (old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
