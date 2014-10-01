@@ -76,6 +76,11 @@ static tid_t allocate_tid (void);
 
 void thread_awake (int64_t current_tick);
 
+/* Helper (Auxiliary) functions */
+static bool comparator_greater_thread_priority
+  (const struct list_elem *, const struct list_elem *, void *aux);
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -240,6 +245,14 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* If the newly created thread has a higher priority than
+   * the currently running thread, then there should be an
+   * immediate context switching, for thread priority scheduling. */
+  if (priority > thread_current()->priority) {
+    // current thread releases off its running
+    thread_yield();
+  }
+
   return tid;
 }
 
@@ -295,7 +308,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+
+  // t will turn into ready-to-run state : inserting into ready_list
+  // maintaining in the non-decreasing order of thread priority
+  list_insert_ordered (&ready_list, &t->elem, comparator_greater_thread_priority, NULL);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -365,8 +382,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread)
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread) {
+    // t will turn into ready-to-run state : inserting into ready_list
+    list_insert_ordered (&ready_list, &cur->elem, comparator_greater_thread_priority, NULL);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -637,7 +656,25 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+/* Helper function: implementations */
+
+// A comparator function for thread priority, w.r.t ready_list element.
+// returns true iff (thread a)'s priority > (thread b)'s priority.
+static bool
+comparator_greater_thread_priority (
+    const struct list_elem *a,
+    const struct list_elem *b, void *aux)
+{
+  struct thread *ta, *tb;
+  ASSERT (a != NULL);
+  ASSERT (b != NULL);
+  ta = list_entry (a, struct thread, elem);
+  tb = list_entry (b, struct thread, elem);
+  return ta->priority > tb->priority;
+}
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
