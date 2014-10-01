@@ -24,6 +24,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* List of processes in sleep (wait) state (i.e. wait queue). */
+static struct list wait_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -71,6 +74,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+void thread_awake (int64_t current_tick);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -91,6 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&wait_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -98,6 +104,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->sleep_endtick = 0; // a dummy value
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -118,9 +125,12 @@ thread_start (void)
 }
 
 /* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+   Thus, this function runs in an external interrupt context.
+
+   The parameter 'tick' is the current tick count held by
+   the timer device. */
 void
-thread_tick (void)
+thread_tick (int64_t tick)
 {
   struct thread *t = thread_current ();
 
@@ -134,10 +144,39 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  /* Wake any thread whose ticks_end has been expired. */
+  thread_awake (tick);
+
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
+
+/* Wake up all sleeping threads whose ticks_end has been expired,
+   removing from the wait queue and pushing it into the ready queue.
+
+   This function must be called with interrupts turned off. */
+void
+thread_awake (int64_t current_tick) {
+  struct list_elem *e;
+
+  // interrupt level check
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  // enumerate all threads in wait queue
+  for (e = list_begin (&wait_list); e != list_end (&wait_list); e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, waitelem);
+      if (t->sleep_endtick <= current_tick) {
+        /* sleep is expired. awake up t */
+        t->sleep_endtick = 0;
+        list_remove (&t->waitelem);
+        // Add to run queue.
+        thread_unblock (t);
+      }
+    }
+}
+
 
 /* Prints thread statistics. */
 void
@@ -203,6 +242,25 @@ thread_create (const char *name, int priority,
 
   return tid;
 }
+
+/* Make the current thread T to sleep, until the timer ticks
+   reaches 'ticks_end'.
+
+   It subsequently calls thread_block(), making T sleep actually.
+   This function must be called with interrupts turned off. */
+void
+thread_sleep_until (int64_t ticks_end)
+{
+  struct thread *t = thread_current();
+  t->sleep_endtick = ticks_end;
+
+  // put T into the wait queue
+  list_push_back (&wait_list, &t->waitelem);
+
+  // make the current thread block (sleeped)
+  thread_block();
+}
+
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -462,6 +520,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->sleep_endtick = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
