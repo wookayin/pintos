@@ -230,8 +230,6 @@ lock_acquire (struct lock *lock)
 
   while (t_holder != NULL && t_holder->priority < t_current->priority) {
     // Donate priority to [t_holder]
-//    t_holder->priority = t_current->priority; // TODO (no yield)
-
     thread_priority_donate(t_holder, t_current->priority);
 
     if (current_lock->priority < t_current->priority) {
