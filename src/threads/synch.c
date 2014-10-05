@@ -119,12 +119,15 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
 
+  sema->value++;
+
   if (!list_empty (&sema->waiters)) {
+    list_sort(&(sema->waiters), comparator_greater_thread_priority, NULL);
+
     // the thread of highest priority (in sema waiters) should wake up
     target = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
     thread_unblock (target);
   }
-  sema->value++;
 
   // preemption on wake up
   if (target != NULL && target->priority > thread_current()->priority) {
@@ -225,15 +228,17 @@ lock_acquire (struct lock *lock)
 
   while (t_holder != NULL && t_holder->priority < t_current->priority) {
     // Donate priority to [t_holder]
-    t_holder->priority = t_current->priority; // TODO (no yield)
+//    t_holder->priority = t_current->priority; // TODO (no yield)
+
+    thread_priority_donate(t_holder, t_current->priority);
 
     if (current_lock->priority < t_current->priority) {
       current_lock->priority = t_current->priority;
     }
 
-    current_lock = t_holder->waiting_lock;
-    if(current_lock == NULL) break;
-    t_holder = current_lock->holder;
+      current_lock = t_holder->waiting_lock;
+      if(current_lock == NULL) break;
+      t_holder = current_lock->holder;
   }
 
   sema_down (&lock->semaphore);
@@ -289,14 +294,15 @@ lock_release (struct lock *lock)
   // priority donation
   if (list_empty(&t_current->locks)) {
     // no more locks: restore the original priority of the current thread
-    t_current->priority = t_current->original_priority; // TODO (no yield)
+    thread_priority_donate(t_current, t_current->original_priority);
   }
   else {
     // donated: the highest priority lock
-//    list_sort(&(t_current->locks), comparator_greater_lock_priority, NULL);
+    list_sort(&(t_current->locks), comparator_greater_lock_priority, NULL); // TODO why it is needed?
     struct lock *highest_lock = list_entry( list_front(&(t_current->locks)), struct lock, lockelem );
 
-    t_current->priority = highest_lock->priority; // TODO (no yield)
+    thread_priority_donate(t_current, highest_lock->priority);
+
   }
 
 }
