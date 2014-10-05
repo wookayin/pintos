@@ -419,7 +419,12 @@ void
 thread_set_priority (int new_priority)
 {
   struct thread* next;
-  thread_current()->priority = new_priority;
+  struct thread* t_current = thread_current ();
+
+  if(t_current->priority == t_current->original_priority) {
+    t_current->original_priority = new_priority;
+  }
+  t_current->priority = new_priority;
 
   if (!list_empty (&ready_list)) {
     next = list_entry(list_begin(&ready_list), struct thread, elem);
