@@ -116,10 +116,14 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters))
+  sema->value++;
+
+  if (!list_empty (&sema->waiters)) {
+    // the thread of highest priority (in sema waiters) should wake up
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
-  sema->value++;
+  }
+
   intr_set_level (old_level);
 }
 
@@ -199,6 +203,16 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  // priority donation, when locking
+  struct thread *t_holder = lock->holder; // current holder thread
+  struct thread *t_current = thread_current();
+  if(t_holder != NULL) {
+    if (t_current->priority > t_holder->priority) {
+      t_holder->original_priority = t_holder->priority;
+      t_holder->priority = t_current->priority; // note: no yield here
+    }
+  }
+
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
 }
@@ -236,6 +250,10 @@ lock_release (struct lock *lock)
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+  // priority donation: restore priority of the current thread
+  struct thread *t_current = thread_current();
+  t_current->priority = t_current->original_priority; // note: no yield
 }
 
 /* Returns true if the current thread holds LOCK, false
