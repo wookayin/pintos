@@ -76,6 +76,8 @@ static tid_t allocate_tid (void);
 
 void thread_awake (int64_t current_tick);
 
+void thread_priority_donate(struct thread *, int priority);
+
 /* Helper (Auxiliary) functions */
 static bool comparator_greater_thread_priority
   (const struct list_elem *, const struct list_elem *, void *aux);
@@ -150,7 +152,7 @@ thread_tick (int64_t tick)
     kernel_ticks++;
 
   /* Wake any thread whose ticks_end has been expired. */
-  thread_awake (tick);
+  thread_awake(tick);
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -317,8 +319,8 @@ thread_unblock (struct thread *t)
 
   // ensure preemption : compare priorities of current thread and t (to be unblocked),
   //if (thread_current() != idle_thread && thread_current()->priority < t->priority )
-  if (thread_current() != idle_thread )
-    thread_yield();
+ // if (thread_current() != idle_thread )
+//    thread_yield();
 
   intr_set_level (old_level);
 }
@@ -414,17 +416,52 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+
+/* Sets the current thread's priority to NEW_PRIORITY when a donation
+   was not performed. */
 void
 thread_set_priority (int new_priority)
 {
-  struct thread* next;
-  thread_current ()->priority = new_priority;
-  next = list_entry(list_begin(&ready_list), struct thread, elem);
-  if ( next->priority > new_priority) {
-    thread_yield();
+  // if the current thread has no donation, then it is normal priority change request.
+  struct thread *t_current = thread_current();
+  if (t_current->priority == t_current->original_priority) {
+    t_current->priority = new_priority;
+    t_current->original_priority = new_priority;
+  }
+  // otherwise, it has a donation: the original priority only should have changed
+  else {
+    t_current->original_priority = new_priority;
+  }
+
+  // if current thread gets its priority decreased, then yield
+  // (foremost entry in ready_list shall have the highest priority)
+  if (!list_empty (&ready_list)) {
+    struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
+    if (next != NULL && next->priority > new_priority) {
+      thread_yield();
+    }
+  }
+
 }
+
+/* Let the thread [target] be donated the priority. */
+void
+thread_priority_donate(struct thread *target, int new_priority)
+{
+  // donation : change only current priority
+  target->priority = new_priority;
+
+  // if current thread gets its priority decreased, then yield
+  // (foremost entry in ready_list shall have the highest priority)
+  if (target == thread_current() && !list_empty (&ready_list)) {
+    struct thread *next = list_entry(list_begin(&ready_list), struct thread, elem);
+    if (next != NULL && next->priority > new_priority) {
+      thread_yield();
+    }
+  }
+
 }
+
 
 /* Returns the current thread's priority. */
 int
@@ -550,6 +587,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->original_priority = priority;
+  t->waiting_lock = NULL;
+  list_init (&t->locks);
   t->sleep_endtick = 0;
   t->magic = THREAD_MAGIC;
 
