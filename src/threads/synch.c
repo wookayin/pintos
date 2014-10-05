@@ -291,13 +291,15 @@ lock_release (struct lock *lock)
   // Remove the lock from locklist
   list_remove (&lock->lockelem);
 
-  // priority donation
+  // priority donation : restoration
   if (list_empty(&t_current->locks)) {
-    // no more locks: restore the original priority of the current thread
+    // no more locks: there is no priority donors
+    // the original priority of the current thread
     thread_priority_donate(t_current, t_current->original_priority);
   }
   else {
-    // donated: the highest priority lock
+    // donated: lookup the donors, find the highest priority lock
+    // then it should be the (newly updated) donated priority of t
     list_sort(&(t_current->locks), comparator_greater_lock_priority, NULL); // TODO why it is needed?
     struct lock *highest_lock = list_entry( list_front(&(t_current->locks)), struct lock, lockelem );
 
