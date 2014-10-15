@@ -6,21 +6,21 @@
 #include <syscall.h>
 
 int
-main (int argc, char *argv[]) 
+main (int argc, char *argv[])
 {
   bool success = true;
   int i;
-  
-  for (i = 1; i < argc; i++) 
+
+  for (i = 1; i < argc; i++)
     {
       int fd = open (argv[i]);
-      if (fd < 0) 
+      if (fd < 0)
         {
           printf ("%s: open failed\n", argv[i]);
           success = false;
           continue;
         }
-      for (;;) 
+      for (;;)
         {
           char buffer[1024];
           int pos = tell (fd);

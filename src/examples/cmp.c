@@ -6,11 +6,11 @@
 #include <syscall.h>
 
 int
-main (int argc, char *argv[]) 
+main (int argc, char *argv[])
 {
   int fd[2];
 
-  if (argc != 3) 
+  if (argc != 3)
     {
       printf ("usage: cmp A B\n");
       return EXIT_FAILURE;
@@ -18,20 +18,20 @@ main (int argc, char *argv[])
 
   /* Open files. */
   fd[0] = open (argv[1]);
-  if (fd[0] < 0) 
+  if (fd[0] < 0)
     {
       printf ("%s: open failed\n", argv[1]);
       return EXIT_FAILURE;
     }
   fd[1] = open (argv[2]);
-  if (fd[1] < 0) 
+  if (fd[1] < 0)
     {
       printf ("%s: open failed\n", argv[1]);
       return EXIT_FAILURE;
     }
 
   /* Compare data. */
-  for (;;) 
+  for (;;)
     {
       int pos;
       char buffer[2][1024];
@@ -47,7 +47,7 @@ main (int argc, char *argv[])
         break;
 
       for (i = 0; i < min_read; i++)
-        if (buffer[0][i] != buffer[1][i]) 
+        if (buffer[0][i] != buffer[1][i])
           {
             printf ("Byte %d is %02hhx ('%c') in %s but %02hhx ('%c') in %s\n",
                     pos + i,

@@ -9,7 +9,7 @@ main (int argc, char *argv[])
   pid_t pid;
   int retval = 0;
 
-  if (argc != 4) 
+  if (argc != 4)
     {
       printf ("usage: recursor <string> <depth> <waitp>\n");
       exit (1);
@@ -19,7 +19,7 @@ main (int argc, char *argv[])
   printf ("%s %s %s %s\n", argv[0], argv[1], argv[2], argv[3]);
 
   /* Execute child and wait for it to finish if requested. */
-  if (atoi (argv[2]) != 0) 
+  if (atoi (argv[2]) != 0)
     {
       snprintf (buffer, sizeof buffer,
                 "recursor %s %d %s", argv[1], atoi (argv[2]) - 1, argv[3]);
@@ -27,7 +27,7 @@ main (int argc, char *argv[])
       if (atoi (argv[3]))
         retval = wait (pid);
     }
-  
+
   /* Done. */
   printf ("%s %s: dying, retval=%d\n", argv[1], argv[2], retval);
   exit (retval);

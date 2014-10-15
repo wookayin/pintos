@@ -10,23 +10,23 @@ int
 main (void)
 {
   printf ("Shell starting...\n");
-  for (;;) 
+  for (;;)
     {
       char command[80];
 
       /* Read command. */
       printf ("--");
       read_line (command, sizeof command);
-      
+
       /* Execute command. */
       if (!strcmp (command, "exit"))
         break;
-      else if (!memcmp (command, "cd ", 3)) 
+      else if (!memcmp (command, "cd ", 3))
         {
           if (!chdir (command + 3))
             printf ("\"%s\": chdir failed\n", command + 3);
         }
-      else if (command[0] == '\0') 
+      else if (command[0] == '\0')
         {
           /* Empty command. */
         }
@@ -49,7 +49,7 @@ main (void)
    expected by Unix users.  On return, LINE will always be
    null-terminated and will not end in a new-line character. */
 static void
-read_line (char line[], size_t size) 
+read_line (char line[], size_t size)
 {
   char *pos = line;
   for (;;)
@@ -57,7 +57,7 @@ read_line (char line[], size_t size)
       char c;
       read (STDIN_FILENO, &c, 1);
 
-      switch (c) 
+      switch (c)
         {
         case '\r':
           *pos = '\0';
@@ -75,7 +75,7 @@ read_line (char line[], size_t size)
 
         default:
           /* Add character to line. */
-          if (pos < line + size - 1) 
+          if (pos < line + size - 1)
             {
               putchar (c);
               *pos++ = c;
@@ -89,7 +89,7 @@ read_line (char line[], size_t size)
    position.  Returns true if successful, false if nothing was
    done. */
 static bool
-backspace (char **pos, char line[]) 
+backspace (char **pos, char line[])
 {
   if (*pos > line)
     {

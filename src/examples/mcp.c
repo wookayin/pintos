@@ -7,7 +7,7 @@
 #include <syscall.h>
 
 int
-main (int argc, char *argv[]) 
+main (int argc, char *argv[])
 {
   int in_fd, out_fd;
   mapid_t in_map, out_map;
@@ -15,7 +15,7 @@ main (int argc, char *argv[])
   void *out_data = (void *) 0x20000000;
   int size;
 
-  if (argc != 3) 
+  if (argc != 3)
     {
       printf ("usage: cp OLD NEW\n");
       return EXIT_FAILURE;
@@ -23,7 +23,7 @@ main (int argc, char *argv[])
 
   /* Open input file. */
   in_fd = open (argv[1]);
-  if (in_fd < 0) 
+  if (in_fd < 0)
     {
       printf ("%s: open failed\n", argv[1]);
       return EXIT_FAILURE;
@@ -31,13 +31,13 @@ main (int argc, char *argv[])
   size = filesize (in_fd);
 
   /* Create and open output file. */
-  if (!create (argv[2], size)) 
+  if (!create (argv[2], size))
     {
       printf ("%s: create failed\n", argv[2]);
       return EXIT_FAILURE;
     }
   out_fd = open (argv[2]);
-  if (out_fd < 0) 
+  if (out_fd < 0)
     {
       printf ("%s: open failed\n", argv[2]);
       return EXIT_FAILURE;
@@ -45,7 +45,7 @@ main (int argc, char *argv[])
 
   /* Map files. */
   in_map = mmap (in_fd, in_data);
-  if (in_map == MAP_FAILED) 
+  if (in_map == MAP_FAILED)
     {
       printf ("%s: mmap failed\n", argv[1]);
       return EXIT_FAILURE;

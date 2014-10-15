@@ -1,5 +1,5 @@
 /* ls.c
-  
+
    Lists the contents of the directory or directories named on
    the command line, or of the current directory if none are
    named.
@@ -13,10 +13,10 @@
 #include <string.h>
 
 static bool
-list_dir (const char *dir, bool verbose) 
+list_dir (const char *dir, bool verbose)
 {
   int dir_fd = open (dir);
-  if (dir_fd == -1) 
+  if (dir_fd == -1)
     {
       printf ("%s: not found\n", dir);
       return false;
@@ -31,10 +31,10 @@ list_dir (const char *dir, bool verbose)
         printf (" (inumber %d)", inumber (dir_fd));
       printf (":\n");
 
-      while (readdir (dir_fd, name)) 
+      while (readdir (dir_fd, name))
         {
-          printf ("%s", name); 
-          if (verbose) 
+          printf ("%s", name);
+          if (verbose)
             {
               char full_name[128];
               int entry_fd;
@@ -58,28 +58,28 @@ list_dir (const char *dir, bool verbose)
           printf ("\n");
         }
     }
-  else 
+  else
     printf ("%s: not a directory\n", dir);
   close (dir_fd);
   return true;
 }
 
 int
-main (int argc, char *argv[]) 
+main (int argc, char *argv[])
 {
   bool success = true;
   bool verbose = false;
-  
-  if (argc > 1 && !strcmp (argv[1], "-l")) 
+
+  if (argc > 1 && !strcmp (argv[1], "-l"))
     {
       verbose = true;
       argv++;
       argc--;
     }
-  
+
   if (argc <= 1)
     success = list_dir (".", verbose);
-  else 
+  else
     {
       int i;
       for (i = 1; i < argc; i++)

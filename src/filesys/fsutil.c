@@ -13,11 +13,11 @@
 
 /* List files in the root directory. */
 void
-fsutil_ls (char **argv UNUSED) 
+fsutil_ls (char **argv UNUSED)
 {
   struct dir *dir;
   char name[NAME_MAX + 1];
-  
+
   printf ("Files in the root directory:\n");
   dir = dir_open_root ();
   if (dir == NULL)
@@ -34,7 +34,7 @@ void
 fsutil_cat (char **argv)
 {
   const char *file_name = argv[1];
-  
+
   struct file *file;
   char *buffer;
 
@@ -43,14 +43,14 @@ fsutil_cat (char **argv)
   if (file == NULL)
     PANIC ("%s: open failed", file_name);
   buffer = palloc_get_page (PAL_ASSERT);
-  for (;;) 
+  for (;;)
     {
       off_t pos = file_tell (file);
       off_t n = file_read (file, buffer, PGSIZE);
       if (n == 0)
         break;
 
-      hex_dump (pos, buffer, n, true); 
+      hex_dump (pos, buffer, n, true);
     }
   palloc_free_page (buffer);
   file_close (file);
@@ -58,10 +58,10 @@ fsutil_cat (char **argv)
 
 /* Deletes file ARGV[1]. */
 void
-fsutil_rm (char **argv) 
+fsutil_rm (char **argv)
 {
   const char *file_name = argv[1];
-  
+
   printf ("Deleting '%s'...\n", file_name);
   if (!filesys_remove (file_name))
     PANIC ("%s: delete failed\n", file_name);
@@ -70,7 +70,7 @@ fsutil_rm (char **argv)
 /* Extracts a ustar-format tar archive from the scratch block
    device into the Pintos file system. */
 void
-fsutil_extract (char **argv UNUSED) 
+fsutil_extract (char **argv UNUSED)
 {
   static block_sector_t sector = 0;
 
@@ -191,14 +191,14 @@ fsutil_append (char **argv)
   dst = block_get_role (BLOCK_SCRATCH);
   if (dst == NULL)
     PANIC ("couldn't open scratch device");
-  
+
   /* Write ustar header to first sector. */
   if (!ustar_make_header (file_name, USTAR_REGULAR, size, buffer))
     PANIC ("%s: name too long for ustar format", file_name);
   block_write (dst, sector++, buffer);
 
   /* Do copy. */
-  while (size > 0) 
+  while (size > 0)
     {
       int chunk_size = size > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size;
       if (sector >= block_size (dst))

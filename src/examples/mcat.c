@@ -7,11 +7,11 @@
 #include <syscall.h>
 
 int
-main (int argc, char *argv[]) 
+main (int argc, char *argv[])
 {
   int i;
-  
-  for (i = 1; i < argc; i++) 
+
+  for (i = 1; i < argc; i++)
     {
       int fd;
       mapid_t map;
@@ -20,7 +20,7 @@ main (int argc, char *argv[])
 
       /* Open input file. */
       fd = open (argv[i]);
-      if (fd < 0) 
+      if (fd < 0)
         {
           printf ("%s: open failed\n", argv[i]);
           return EXIT_FAILURE;
@@ -29,7 +29,7 @@ main (int argc, char *argv[])
 
       /* Map files. */
       map = mmap (fd, data);
-      if (map == MAP_FAILED) 
+      if (map == MAP_FAILED)
         {
           printf ("%s: mmap failed\n", argv[i]);
           return EXIT_FAILURE;
