@@ -88,6 +88,13 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
+  // TODO : this is unimplemented version yet,
+  // but process_wait should block the process for a while
+  // to prevent the pintos kernel from shutting down.
+  int dummy = 0, i;
+  for(i=0; i<7 * 10000 * 10000; ++i) dummy += i;
+  ASSERT(dummy != 0);
+
   return -1;
 }
 
