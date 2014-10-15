@@ -130,12 +130,6 @@ sema_up (struct semaphore *sema)
     thread_unblock (target);
   }
 
-  // preemption on wake up
-  if (target != NULL && target->priority > thread_current()->priority) {
-    thread_yield();
-  }
-
-
   intr_set_level (old_level);
 }
 
