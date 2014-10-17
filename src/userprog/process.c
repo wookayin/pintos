@@ -20,6 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void argument_pushing(char **parse, int cnt, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -29,6 +30,7 @@ tid_t
 process_execute (const char *file_name)
 {
   char *fn_copy;
+  char *save_ptr;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,9 +41,13 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
+  file_name = strtok_r((char *) file_name, " ", &save_ptr);//argument parsing by strtok_r
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+
   if (tid == TID_ERROR)
+  {
     palloc_free_page (fn_copy);
+  }
   return tid;
 }
 
@@ -50,16 +56,28 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  char* tmp[50];
+  char* token;
+  char* save_ptr;
+  int cnt = 0;
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
+      token = strtok_r(NULL, " ", &save_ptr))
+  {
+    tmp[cnt++] = token;
+  }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  argument_pushing(&tmp, cnt, &if_.esp); // pushing arguments into stack
+
+  // DEBUG
+  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -430,6 +448,47 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     }
   return true;
 }
+
+static void
+argument_pushing (char** parse, int argc, void **esp)
+{
+  int i;
+  int len=0;
+  int argv_addr[argc];
+  for (i = 0; i < argc; i++) {
+    len = strlen(parse[i]) + 1;
+    *esp -= len;
+    memcpy(*esp, parse[i], len);
+    argv_addr[i] = (int) *esp;
+  }
+
+  // word align
+  *esp = (int)*esp & 0xfffffffc;
+
+  // last null
+  *esp -= 4;
+  *(int*)*esp = 0;
+
+  // setting **esp with argvs
+  for (i = argc - 1; i >= 0; i--) {
+    *esp -= 4;
+    *(int*)*esp = argv_addr[i];
+  }
+
+  //setting **argv
+  *esp -= 4;
+  *(int*)*esp = (int)*esp + 4;
+
+  //setting argc
+  *esp -= 4;
+  *(int*)*esp = argc;
+
+  //setting ret
+  *esp-=4;
+  *(int*)*esp = 0;
+
+}
+
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
