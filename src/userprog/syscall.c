@@ -7,6 +7,12 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#ifdef DEBUG
+#define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define _DEBUG_PRINTF(...) /* do nothing */
+#endif
+
 static void syscall_handler (struct intr_frame *);
 
 static int32_t get_user (const uint8_t *uaddr);
@@ -39,7 +45,7 @@ syscall_handler (struct intr_frame *f)
     return;
   }
 
-  printf ("[DEBUG] system call, number = %d!\n", syscall_number);
+  _DEBUG_PRINTF ("[DEBUG] system call, number = %d!\n", syscall_number);
 
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h
@@ -122,8 +128,7 @@ void sys_exit(int status UNUSED) {
 }
 
 pid_t sys_exec(const char *cmdline) {
-  printf("[DEBUG] Exec : %s\n", cmdline);
-  while(true);
+  _DEBUG_PRINTF ("[DEBUG] Exec : %s\n", cmdline);
 
   // cmdline is an address to the character buffer, on user memory
   // so a validation check is required

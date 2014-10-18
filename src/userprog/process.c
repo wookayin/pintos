@@ -77,7 +77,9 @@ start_process (void *file_name_)
   argument_pushing(&tmp, cnt, &if_.esp); // pushing arguments into stack
 
   // DEBUG
+#ifdef DEBUG
   hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
+#endif
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
