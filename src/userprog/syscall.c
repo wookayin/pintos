@@ -32,6 +32,12 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+// in case of invalid memory access, fail and exit.
+static int fail_invalid_access(void) {
+  sys_exit (-1);
+  NOT_REACHED();
+}
+
 static void
 syscall_handler (struct intr_frame *f)
 {
@@ -40,10 +46,8 @@ syscall_handler (struct intr_frame *f)
   ASSERT( sizeof(syscall_number) == 4 ); // assuming x86
 
   // The system call number is in the 32-bit word at the caller's stack pointer.
-  if (memread_user(f->esp, &syscall_number, sizeof(syscall_number)) == -1) {
-    thread_exit (); // invalid memory access, terminate the user process
-    return;
-  }
+  if (memread_user(f->esp, &syscall_number, sizeof(syscall_number)) == -1)
+    fail_invalid_access();
 
   _DEBUG_PRINTF ("[DEBUG] system call, number = %d!\n", syscall_number);
 
@@ -61,7 +65,7 @@ syscall_handler (struct intr_frame *f)
     {
       int exitcode;
       if (memread_user(f->esp + 4, &exitcode, sizeof(exitcode)) == -1)
-        thread_exit(); // invalid memory access
+        fail_invalid_access();
 
       sys_exit(exitcode);
       NOT_REACHED();
@@ -72,7 +76,7 @@ syscall_handler (struct intr_frame *f)
     {
       void* cmdline;
       if (memread_user(f->esp + 4, &cmdline, sizeof(cmdline)) == -1)
-        thread_exit(); // invalid memory access
+        fail_invalid_access();
 
       int return_code = sys_exec((const char*) cmdline);
       f->eax = (uint32_t) return_code;
@@ -93,12 +97,12 @@ syscall_handler (struct intr_frame *f)
       const void *buffer;
       unsigned size;
 
-      // TODO some error messages
-      if(-1 == memread_user(f->esp + 4, &fd, 4)) thread_exit();
-      if(-1 == memread_user(f->esp + 8, &buffer, 4)) thread_exit();
-      if(-1 == memread_user(f->esp + 12, &size, 4)) thread_exit();
+      if(-1 == memread_user(f->esp + 4, &fd, 4)) fail_invalid_access();
+      if(-1 == memread_user(f->esp + 8, &buffer, 4)) fail_invalid_access();
+      if(-1 == memread_user(f->esp + 12, &size, 4)) fail_invalid_access();
 
-      if(!sys_write(fd, buffer, size, &return_code)) thread_exit();
+      if(!sys_write(fd, buffer, size, &return_code))
+        thread_exit(); // TODO
       f->eax = (uint32_t) return_code;
       break;
     }
@@ -108,22 +112,24 @@ syscall_handler (struct intr_frame *f)
   case SYS_CLOSE:
 
   /* unhandled case */
-  default:
 unhandled:
+  default:
     printf("[ERROR] system call %d is unimplemented!\n", syscall_number);
     thread_exit();
     break;
   }
+
 }
 
 void sys_halt(void) {
   shutdown_power_off();
 }
 
-void sys_exit(int status UNUSED) {
+void sys_exit(int status) {
   printf("%s: exit(%d)\n", thread_current()->name, status);
 
-  // TODO
+  // set return code : status
+  // TODO pass status into the kernel
   thread_exit();
 }
 
