@@ -9,6 +9,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+#include "lib/kernel/list.h"
+
 
 #ifdef DEBUG
 #define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -29,7 +32,9 @@ pid_t sys_exec (const char *cmdline);
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret);
 bool sys_create(const char* filename, unsigned initial_size);
 bool sys_remove(const char* filename);
+int sys_open(const char* file);
 
+struct lock filesys_lock;
 
 void
 syscall_init (void)
@@ -91,6 +96,18 @@ syscall_handler (struct intr_frame *f)
   case SYS_WAIT:
     goto unhandled;
 
+  case SYS_OPEN:
+    {
+      const char* filename;
+      int return_code;
+
+      if (memread_user(f->esp + 4, &filename, sizeof(filename)) == -1)
+         fail_invalid_access(); // invalid memory access
+      return_code = sys_open(filename);
+      f->eax = return_code;
+      break;
+    }
+
   case SYS_CREATE:
     {
       const char* filename;
@@ -105,6 +122,7 @@ syscall_handler (struct intr_frame *f)
       f->eax = return_code;
       break;
     }
+
   case SYS_READ:
     goto unhandled;
 
@@ -182,6 +200,36 @@ bool sys_remove(const char* filename) {
   return_code = filesys_remove(filename);
   return return_code;
 }
+
+int sys_open(const char* file) {
+  struct file* file_opened;
+  struct file_desc* fd = palloc_get_page(0);
+
+  // memory validation
+  if (get_user((const uint8_t*) file) == -1) {
+    return fail_invalid_access();
+  }
+
+  file_opened = filesys_open(file);
+  if (!file_opened) {
+    return -1;
+  }
+
+  fd->file = file_opened;
+
+  struct list* fd_list = &thread_current()->file_descriptors;
+  if (list_empty(fd_list)) {
+    // 0, 1, 2 are reserved for stdin, stdout, stderr
+    fd->id = 3;
+  }
+  else {
+    fd->id = (list_entry(list_back(fd_list), struct file_desc, elem)->id) + 1;
+  }
+  list_push_back(fd_list, &(fd->elem));
+
+  return fd->id;
+}
+
 
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret) {
   // memory validation
