@@ -1,6 +1,9 @@
 #include "devices/shutdown.h"
 #include "userprog/syscall.h"
 #include "userprog/process.h"
+#include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "threads/palloc.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -24,6 +27,8 @@ void sys_halt (void);
 void sys_exit (int);
 pid_t sys_exec (const char *cmdline);
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret);
+bool sys_create(const char* filename, unsigned initial_size);
+bool sys_remove(const char* filename);
 
 
 void
@@ -84,10 +89,22 @@ syscall_handler (struct intr_frame *f)
     }
 
   case SYS_WAIT:
+    goto unhandled;
+
   case SYS_CREATE:
-  case SYS_REMOVE:
-  case SYS_OPEN:
-  case SYS_FILESIZE:
+    {
+      const char* filename;
+      unsigned initial_size;
+      bool return_code;
+      if (memread_user(f->esp + 4, &filename, sizeof(filename)) == -1)
+         fail_invalid_access(); // invalid memory access
+      if (memread_user(f->esp + 8, &initial_size, sizeof(initial_size)) == -1)
+         fail_invalid_access(); // invalid memory access
+
+      return_code = sys_create(filename, initial_size);
+      f->eax = return_code;
+      break;
+    }
   case SYS_READ:
     goto unhandled;
 
@@ -139,13 +156,31 @@ pid_t sys_exec(const char *cmdline) {
   // cmdline is an address to the character buffer, on user memory
   // so a validation check is required
   if (get_user((const uint8_t*) cmdline) == -1) {
-    // invalid memory access
-    thread_exit();
-    return -1;
+      return fail_invalid_access();
   }
-
   tid_t child_tid = process_execute(cmdline);
   return child_tid;
+}
+
+bool sys_create(const char* filename, unsigned initial_size) {
+  bool return_code;
+  // memory validation
+  if (get_user((const uint8_t*) filename) == -1) {
+    return fail_invalid_access();
+  }
+  return_code = filesys_create(filename, initial_size);
+  return return_code;
+}
+
+bool sys_remove(const char* filename) {
+  bool return_code;
+  // memory validation
+  if (get_user((const uint8_t*) filename) == -1) {
+    return fail_invalid_access();
+  }
+
+  return_code = filesys_remove(filename);
+  return return_code;
 }
 
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret) {
