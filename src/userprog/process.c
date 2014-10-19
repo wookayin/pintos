@@ -49,10 +49,17 @@ process_execute (const char *cmdline)
   file_name = strtok_r(file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_copy);
+
+  // Create a PCB, along with file_name, and pass it into thread_create
+  // so that a newly created thread can hold the PCB of process to be executed.
+  struct process_control_block *pcb = palloc_get_page(0);
+  pcb->pid = PID_INITIALIZING;
+  pcb->cmdline = cmdline_copy;
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
 
   if (tid == TID_ERROR)
   {
+    palloc_free_page (pcb);
     palloc_free_page (file_name);
     palloc_free_page (cmdline_copy);
   }
@@ -62,13 +69,15 @@ process_execute (const char *cmdline)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *pcb_)
 {
+  struct process_control_block *pcb = pcb_;
+
   char* tmp[50];
   char* token;
   char* save_ptr;
   int cnt = 0;
-  char *file_name = file_name_;
+  char *file_name = (char*) pcb->cmdline;
   struct intr_frame if_;
   bool success;
   for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
@@ -88,6 +97,11 @@ start_process (void *file_name_)
 #ifdef DEBUG
   hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
 #endif
+
+  /* Assign PCB */
+  struct thread *t = thread_current();
+  pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR; // in our kernel, pid is just thread id
+  t->pcb = pcb;
 
   /* If load failed, quit. */
   palloc_free_page (file_name);

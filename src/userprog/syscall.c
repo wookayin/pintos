@@ -18,8 +18,6 @@ static void syscall_handler (struct intr_frame *);
 static int32_t get_user (const uint8_t *uaddr);
 static int memread_user (void *src, void *des, size_t bytes);
 
-typedef uint32_t pid_t;
-
 void sys_halt (void);
 void sys_exit (int);
 pid_t sys_exec (const char *cmdline);
