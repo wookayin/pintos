@@ -21,6 +21,8 @@ static int memread_user (void *src, void *des, size_t bytes);
 void sys_halt (void);
 void sys_exit (int);
 pid_t sys_exec (const char *cmdline);
+int sys_wait(pid_t pid);
+
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret);
 
 
@@ -70,7 +72,7 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
-  case SYS_EXEC:
+  case SYS_EXEC: // 2
     {
       void* cmdline;
       if (memread_user(f->esp + 4, &cmdline, sizeof(cmdline)) == -1)
@@ -81,7 +83,17 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
-  case SYS_WAIT:
+  case SYS_WAIT: // 3
+    {
+      pid_t pid;
+      if (memread_user(f->esp + 4, &pid, sizeof(pid_t)) == -1)
+        fail_invalid_access();
+
+      int ret = sys_wait(pid);
+      f->eax = (uint32_t) ret;
+      break;
+    }
+
   case SYS_CREATE:
   case SYS_REMOVE:
   case SYS_OPEN:
@@ -136,14 +148,15 @@ pid_t sys_exec(const char *cmdline) {
 
   // cmdline is an address to the character buffer, on user memory
   // so a validation check is required
-  if (get_user((const uint8_t*) cmdline) == -1) {
-    // invalid memory access
-    thread_exit();
-    return -1;
-  }
+  if (get_user((const uint8_t*) cmdline) == -1) fail_invalid_access();
 
   tid_t child_tid = process_execute(cmdline);
   return child_tid;
+}
+
+int sys_wait(pid_t pid) {
+  _DEBUG_PRINTF ("[DEBUG] Wait : %d\n", pid);
+  return process_wait(pid);
 }
 
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret) {
