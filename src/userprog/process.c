@@ -27,26 +27,34 @@ static void argument_pushing(char **parse, int cnt, void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name)
+process_execute (const char *cmdline)
 {
-  char *fn_copy;
+  char *cmdline_copy, *file_name;
   char *save_ptr;
   tid_t tid;
 
-  /* Make a copy of FILE_NAME.
+  /* Make a copy of CMD_LINE.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  cmdline_copy = palloc_get_page (0);
+  if (cmdline_copy == NULL) return TID_ERROR;
+  strlcpy (cmdline_copy, cmdline, PGSIZE);
+
+  // Extract file_name from cmdline. Should make a copy.
+  file_name = palloc_get_page (0);
+  if (file_name == NULL) {
+    palloc_free_page (cmdline_copy); /* don't leak */
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  }
+  strlcpy (file_name, cmdline, PGSIZE);
+  file_name = strtok_r(file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  file_name = strtok_r((char *) file_name, " ", &save_ptr);//argument parsing by strtok_r
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, cmdline_copy);
 
   if (tid == TID_ERROR)
   {
-    palloc_free_page (fn_copy);
+    palloc_free_page (file_name);
+    palloc_free_page (cmdline_copy);
   }
   return tid;
 }
