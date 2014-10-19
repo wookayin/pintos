@@ -18,6 +18,13 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+
+#ifdef DEBUG
+#define _DEBUG_PRINTF(...) printf(__VA_ARGS__)
+#else
+#define _DEBUG_PRINTF(...) /* do nothing */
+#endif
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void argument_pushing(char **parse, int cnt, void **esp);
@@ -53,8 +60,21 @@ process_execute (const char *cmdline)
   // Create a PCB, along with file_name, and pass it into thread_create
   // so that a newly created thread can hold the PCB of process to be executed.
   struct process_control_block *pcb = palloc_get_page(0);
+
+  // pid is not set yet. Later, in start_process(), it will be determined.
+  // so we have to postpone afterward actions (such as putting 'pcb'
+  // alongwith (determined) 'pid' into 'child_list'), using context switching.
   pcb->pid = PID_INITIALIZING;
+
   pcb->cmdline = cmdline_copy;
+  pcb->waiting = false;
+  pcb->exited = false;
+  pcb->exitcode = -1; // undefined
+
+  sema_init(&pcb->sema_initialization, 0);
+  sema_init(&pcb->sema_wait, 0);
+
+  // create thread!
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
 
   if (tid == TID_ERROR)
@@ -62,7 +82,15 @@ process_execute (const char *cmdline)
     palloc_free_page (pcb);
     palloc_free_page (file_name);
     palloc_free_page (cmdline_copy);
+    return TID_ERROR;
   }
+
+  // wait until initialization inside start_process() is complete.
+  sema_down(&pcb->sema_initialization);
+
+  // process successfully created, maintain child process list
+  list_push_back (&(thread_current()->child_list), &(pcb->elem));
+
   return tid;
 }
 
@@ -100,8 +128,13 @@ start_process (void *pcb_)
 
   /* Assign PCB */
   struct thread *t = thread_current();
-  pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR; // in our kernel, pid is just thread id
+  // we maintain an one-to-one mapping between pid and tid, with identity function.
+  // pid is determined, so interact with process_execute() for maintaining child_list
+  pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR;
   t->pcb = pcb;
+
+  // wake up sleeping in start_process()
+  sema_up(&pcb->sema_initialization);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -128,16 +161,53 @@ start_process (void *pcb_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED)
+process_wait (tid_t child_tid)
 {
-  // TODO : this is unimplemented version yet,
-  // but process_wait should block the process for a while
-  // to prevent the pintos kernel from shutting down.
-  int dummy = 0, i;
-  for(i=0; i<20 * 10000 * 10000; ++i) dummy += i;
-  ASSERT(dummy != 0);
+  struct thread *t = thread_current ();
+  struct list *child_list = &(t->child_list);
 
-  return -1;
+  // lookup the process with tid equals 'child_tid' from 'child_list'
+  struct process_control_block *child_pcb = NULL;
+  struct list_elem *it = NULL;
+
+  if (!list_empty(child_list)) {
+    for (it = list_front(child_list); it != list_end(child_list); it = list_next(it)) {
+      struct process_control_block *pcb = list_entry(
+          it, struct process_control_block, elem);
+
+      if(pcb->pid == child_tid) { // OK, the direct child found
+        child_pcb = pcb;
+        break;
+      }
+    }
+  }
+
+  // if child process is not found, return -1 immediately
+  if (child_pcb == NULL) {
+    _DEBUG_PRINTF("[DEBUG] wait(): child not found, pid = %d\n", child_tid);
+    return -1;
+  }
+
+  if (child_pcb->waiting) {
+    // already waiting (the parent already called wait on child's pid)
+    _DEBUG_PRINTF("[DEBUG] wait(): child found, pid = %d, but it is already waiting\n", child_tid);
+    return -1; // a process may wait for any fixed child at most once
+  }
+  else {
+    child_pcb->waiting = true;
+  }
+
+  // block until child terminates, and return the exitcode
+  // TODO: scenario of zombie process is tricky!
+  if (! child_pcb->exited) {
+    sema_down(& (child_pcb->sema_wait));
+  }
+  ASSERT (child_pcb->exited == true);
+
+  // remove from child_list
+  ASSERT (it != NULL);
+  list_remove (it);
+  return child_pcb->exitcode;
 }
 
 /* Free the current process's resources. */
