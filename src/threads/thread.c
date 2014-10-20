@@ -589,12 +589,21 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = priority;
   t->waiting_lock = NULL;
   list_init (&t->locks);
+#ifdef USERPROG
+  list_init(&t->file_descriptors);
+#endif
   t->sleep_endtick = 0;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+#ifdef USERPROG
+  // init process-related informations.
+  list_init(&t->child_list);
+  t->pcb = NULL;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
