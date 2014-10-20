@@ -28,7 +28,7 @@ static struct file_desc* find_file_desc(int fd);
 void sys_halt (void);
 void sys_exit (int);
 pid_t sys_exec (const char *cmdline);
-int sys_wait(pid_t pid);
+int sys_wait (pid_t pid);
 
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret);
 bool sys_create(const char* filename, unsigned initial_size);
@@ -46,7 +46,7 @@ syscall_init (void)
 }
 
 // in case of invalid memory access, fail and exit.
-static int fail_invalid_access(void) {
+static void fail_invalid_access(void) {
   sys_exit (-1);
   NOT_REACHED();
 }
@@ -67,14 +67,14 @@ syscall_handler (struct intr_frame *f)
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h
   switch (syscall_number) {
-  case SYS_HALT:
+  case SYS_HALT: // 0
     {
       sys_halt();
       NOT_REACHED();
       break;
     }
 
-  case SYS_EXIT:
+  case SYS_EXIT: // 1
     {
       int exitcode;
       if (memread_user(f->esp + 4, &exitcode, sizeof(exitcode)) == -1)
@@ -107,22 +107,7 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
-  case SYS_REMOVE:
-    goto unhandled;
-
-  case SYS_OPEN:
-    {
-      const char* filename;
-      int return_code;
-
-      if (memread_user(f->esp + 4, &filename, sizeof(filename)) == -1)
-         fail_invalid_access(); // invalid memory access
-      return_code = sys_open(filename);
-      f->eax = return_code;
-      break;
-    }
-
-  case SYS_CREATE:
+  case SYS_CREATE: // 4
     {
       const char* filename;
       unsigned initial_size;
@@ -137,10 +122,22 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
-  case SYS_READ:
+  case SYS_REMOVE: // 5
     goto unhandled;
 
-  case SYS_FILESIZE:
+  case SYS_OPEN: // 6
+    {
+      const char* filename;
+      int return_code;
+
+      if (memread_user(f->esp + 4, &filename, sizeof(filename)) == -1)
+         fail_invalid_access(); // invalid memory access
+      return_code = sys_open(filename);
+      f->eax = return_code;
+      break;
+    }
+
+  case SYS_FILESIZE: // 7
     {
       int fd, return_code;
       if (memread_user(f->esp + 4, &fd, sizeof(fd)) == -1)
@@ -151,7 +148,10 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
-  case SYS_WRITE:
+  case SYS_READ: // 8
+    goto unhandled;
+
+  case SYS_WRITE: // 9
     {
       int fd, return_code;
       const void *buffer;
@@ -162,16 +162,17 @@ syscall_handler (struct intr_frame *f)
       if(-1 == memread_user(f->esp + 12, &size, 4)) fail_invalid_access();
 
       if(!sys_write(fd, buffer, size, &return_code))
-        thread_exit(); // TODO
+        return_code = 0; // no bytes written
+
       f->eax = (uint32_t) return_code;
       break;
     }
 
-  case SYS_SEEK:
-  case SYS_TELL:
+  case SYS_SEEK: // 10
+  case SYS_TELL: // 11
     goto unhandled;
 
-  case SYS_CLOSE:
+  case SYS_CLOSE: // 12
     {
       int fd;
       if (memread_user(f->esp + 4, &fd, sizeof(fd)) == -1)
@@ -193,6 +194,8 @@ unhandled:
   }
 
 }
+
+/****************** System Call Implementations ********************/
 
 void sys_halt(void) {
   shutdown_power_off();
@@ -234,7 +237,7 @@ bool sys_create(const char* filename, unsigned initial_size) {
   bool return_code;
   // memory validation
   if (get_user((const uint8_t*) filename) == -1) {
-    return fail_invalid_access();
+    fail_invalid_access();
   }
   return_code = filesys_create(filename, initial_size);
   return return_code;
@@ -244,7 +247,7 @@ bool sys_remove(const char* filename) {
   bool return_code;
   // memory validation
   if (get_user((const uint8_t*) filename) == -1) {
-    return fail_invalid_access();
+    fail_invalid_access();
   }
 
   return_code = filesys_remove(filename);
@@ -257,7 +260,7 @@ int sys_open(const char* file) {
 
   // memory validation
   if (get_user((const uint8_t*) file) == -1) {
-    return fail_invalid_access();
+    fail_invalid_access();
   }
 
   file_opened = filesys_open(file);
@@ -315,9 +318,7 @@ void sys_close(int fd) {
 bool sys_write(int fd, const void *buffer, unsigned size, int* ret) {
   // memory validation
   if (get_user((const uint8_t*) buffer) == -1) {
-    // invalid
-    thread_exit();
-    return false;
+    fail_invalid_access();
   }
 
   // First, as of now, only implement fd=1 (stdout)
@@ -368,18 +369,20 @@ memread_user (void *src, void *dst, size_t bytes)
   return (int)bytes;
 }
 
+/****************** Helper Functions on File Access ********************/
+
 static struct file_desc*
 find_file_desc(int fd)
 {
   struct thread* curr = thread_current();
-  struct file* output_file;
-  int i;
-  struct list_elem *e = list_begin(&curr->file_descriptors ) ;
   if (fd < 3) {
     return NULL;
   }
 
-  for(i = 3; i < fd; i++){
+  int i;
+  struct list_elem *e = list_begin(&curr->file_descriptors ) ;
+
+  for(i = 3; i < fd; i++) {
     if (e == NULL)
       return NULL;
     e = list_next(e);
@@ -387,5 +390,4 @@ find_file_desc(int fd)
 
   struct file_desc *file_des = list_entry(e, struct file_desc, elem);
   return file_des;
-
 }
