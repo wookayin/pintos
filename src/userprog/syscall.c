@@ -33,8 +33,10 @@ int sys_wait (pid_t pid);
 bool sys_create(const char* filename, unsigned initial_size);
 bool sys_remove(const char* filename);
 int sys_open(const char* file);
-void sys_close(int fd);
 int sys_filesize(int fd);
+void sys_seek(int fd, unsigned position);
+unsigned sys_tell(int fd);
+void sys_close(int fd);
 int sys_read(int fd, void *buffer, unsigned size);
 int sys_write(int fd, const void *buffer, unsigned size);
 
@@ -189,8 +191,28 @@ syscall_handler (struct intr_frame *f)
     }
 
   case SYS_SEEK: // 10
+    {
+      int fd;
+      unsigned position;
+
+      if(-1 == memread_user(f->esp + 4, &fd, sizeof fd)) fail_invalid_access();
+      if(-1 == memread_user(f->esp + 8, &position, sizeof position)) fail_invalid_access();
+
+      sys_seek(fd, position);
+      break;
+    }
+
   case SYS_TELL: // 11
-    goto unhandled;
+    {
+      int fd;
+      unsigned return_code;
+
+      if(-1 == memread_user(f->esp + 4, &fd, 4)) fail_invalid_access();
+
+      return_code = sys_tell(fd);
+      f->eax = (uint32_t) return_code;
+      break;
+    }
 
   case SYS_CLOSE: // 12
     {
@@ -204,7 +226,6 @@ syscall_handler (struct intr_frame *f)
 
 
   /* unhandled case */
-unhandled:
   default:
     printf("[ERROR] system call %d is unimplemented!\n", syscall_number);
 
@@ -312,6 +333,26 @@ int sys_filesize(int fd) {
   }
 
   return file_length(file_d->file);
+}
+
+void sys_seek(int fd, unsigned position) {
+  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+
+  if(file_d && file_d->file) {
+    file_seek(file_d->file, position);
+  }
+  else
+    return; // TODO need sys_exit?
+}
+
+unsigned sys_tell(int fd) {
+  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+
+  if(file_d && file_d->file) {
+    return file_tell(file_d->file);
+  }
+  else
+    return -1; // TODO need sys_exit?
 }
 
 void sys_close(int fd) {
