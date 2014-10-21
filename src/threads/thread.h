@@ -112,6 +112,8 @@ struct thread
                                           each elem is defined by pcb#elem */
 
     struct list file_descriptors;       /* List of file_descriptors the thread contains */
+
+    struct file *executing_file;        /* The executable file of associated process. */
 #endif
 
     /* Owned by thread.c. */

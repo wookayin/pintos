@@ -587,9 +587,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->original_priority = priority;
   t->waiting_lock = NULL;
   list_init (&t->locks);
-#ifdef USERPROG
-  list_init(&t->file_descriptors);
-#endif
   t->sleep_endtick = 0;
   t->magic = THREAD_MAGIC;
 
@@ -599,8 +596,10 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef USERPROG
   // init process-related informations.
-  list_init(&t->child_list);
   t->pcb = NULL;
+  list_init(&t->child_list);
+  list_init(&t->file_descriptors);
+  t->executing_file = NULL;
 #endif
 }
 
