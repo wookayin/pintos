@@ -27,7 +27,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void argument_pushing(char **parse, int cnt, void **esp);
+static void argument_pushing(const char *[], int cnt, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -101,7 +101,7 @@ start_process (void *pcb_)
 {
   struct process_control_block *pcb = pcb_;
 
-  char* tmp[50];
+  const char **cmdline_tokens = (const char**) palloc_get_page (0);
   char* token;
   char* save_ptr;
   int cnt = 0;
@@ -111,7 +111,7 @@ start_process (void *pcb_)
   for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
       token = strtok_r(NULL, " ", &save_ptr))
   {
-    tmp[cnt++] = token;
+    cmdline_tokens[cnt++] = token;
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -119,7 +119,8 @@ start_process (void *pcb_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  argument_pushing(&tmp, cnt, &if_.esp); // pushing arguments into stack
+  argument_pushing(cmdline_tokens, cnt, &if_.esp); // pushing arguments into stack
+  palloc_free_page (cmdline_tokens);
 
   // DEBUG
 #ifdef DEBUG
@@ -544,20 +545,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 static void
-argument_pushing (char** parse, int argc, void **esp)
+argument_pushing (const char* cmdline_tokens[], int argc, void **esp)
 {
-  int i;
-  int len=0;
+  ASSERT(argc >= 0);
+
+  int i, len = 0;
   int argv_addr[argc];
   for (i = 0; i < argc; i++) {
-    len = strlen(parse[i]) + 1;
+    len = strlen(cmdline_tokens[i]) + 1;
     *esp -= len;
-    memcpy(*esp, parse[i], len);
+    memcpy(*esp, cmdline_tokens[i], len);
     argv_addr[i] = (int) *esp;
   }
 
   // word align
-  *esp = (int)*esp & 0xfffffffc;
+  *esp = (void*)((int)*esp & 0xfffffffc);
 
   // last null
   *esp -= 4;

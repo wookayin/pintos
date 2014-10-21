@@ -76,8 +76,6 @@ static tid_t allocate_tid (void);
 
 void thread_awake (int64_t current_tick);
 
-void thread_priority_donate(struct thread *, int priority);
-
 /* Helper (Auxiliary) functions */
 static bool comparator_greater_thread_priority
   (const struct list_elem *, const struct list_elem *, void *aux);
@@ -723,7 +721,7 @@ allocate_tid (void)
 static bool
 comparator_greater_thread_priority (
     const struct list_elem *a,
-    const struct list_elem *b, void *aux)
+    const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *ta, *tb;
   ASSERT (a != NULL);
