@@ -33,7 +33,7 @@ static void argument_pushing(const char *[], int cnt, void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
-tid_t
+pid_t
 process_execute (const char *cmdline)
 {
   char *cmdline_copy, *file_name;
@@ -91,7 +91,7 @@ process_execute (const char *cmdline)
   // process successfully created, maintain child process list
   list_push_back (&(thread_current()->child_list), &(pcb->elem));
 
-  return tid;
+  return pcb->pid;
 }
 
 /* A thread function that loads a user process and starts it
@@ -119,13 +119,10 @@ start_process (void *pcb_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
-  argument_pushing(cmdline_tokens, cnt, &if_.esp); // pushing arguments into stack
+  if (success) {
+    argument_pushing(cmdline_tokens, cnt, &if_.esp); // pushing arguments into stack
+  }
   palloc_free_page (cmdline_tokens);
-
-  // DEBUG
-#ifdef DEBUG
-  hex_dump(if_.esp, if_.esp, PHYS_BASE - if_.esp, true);
-#endif
 
   /* Assign PCB */
   struct thread *t = thread_current();
@@ -134,7 +131,7 @@ start_process (void *pcb_)
   pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR;
   t->pcb = pcb;
 
-  // wake up sleeping in start_process()
+  // wake up sleeping in process_execute()
   sema_up(&pcb->sema_initialization);
 
   /* If load failed, quit. */
