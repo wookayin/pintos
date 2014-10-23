@@ -246,11 +246,15 @@ void sys_exit(int status) {
   // wake up the parent process (if it was sleeping) using semaphore,
   // and pass the return code.
   struct process_control_block *pcb = thread_current()->pcb;
-  ASSERT (pcb != NULL);
-
-  pcb->exited = true;
-  pcb->exitcode = status;
-  sema_up (&pcb->sema_wait);
+  if(pcb != NULL) {
+    pcb->exited = true;
+    pcb->exitcode = status;
+    sema_up (&pcb->sema_wait);
+  }
+  else {
+    // pcb == NULL probably means that previously
+    // page allocation has failed in process_execute()
+  }
 
   thread_exit();
 }
@@ -296,9 +300,13 @@ int sys_open(const char* file) {
 
   struct file* file_opened;
   struct file_desc* fd = palloc_get_page(0);
+  if (!fd) {
+    return -1;
+  }
 
   file_opened = filesys_open(file);
   if (!file_opened) {
+    palloc_free_page (fd);
     return -1;
   }
 

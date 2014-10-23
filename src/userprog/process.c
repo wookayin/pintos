@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -36,21 +37,23 @@ static void argument_pushing(const char *[], int cnt, void **esp);
 pid_t
 process_execute (const char *cmdline)
 {
-  char *cmdline_copy, *file_name;
-  char *save_ptr;
+  char *cmdline_copy = NULL, *file_name = NULL;
+  char *save_ptr = NULL;
+  struct process_control_block *pcb = NULL;
   tid_t tid;
 
   /* Make a copy of CMD_LINE.
      Otherwise there's a race between the caller and load(). */
   cmdline_copy = palloc_get_page (0);
-  if (cmdline_copy == NULL) return TID_ERROR;
+  if (cmdline_copy == NULL) {
+    goto execute_failed;
+  }
   strlcpy (cmdline_copy, cmdline, PGSIZE);
 
   // Extract file_name from cmdline. Should make a copy.
   file_name = palloc_get_page (0);
   if (file_name == NULL) {
-    palloc_free_page (cmdline_copy); /* don't leak */
-    return TID_ERROR;
+    goto execute_failed;
   }
   strlcpy (file_name, cmdline, PGSIZE);
   file_name = strtok_r(file_name, " ", &save_ptr);
@@ -59,7 +62,10 @@ process_execute (const char *cmdline)
 
   // Create a PCB, along with file_name, and pass it into thread_create
   // so that a newly created thread can hold the PCB of process to be executed.
-  struct process_control_block *pcb = palloc_get_page(0);
+  pcb = palloc_get_page(0);
+  if (pcb == NULL) {
+    goto execute_failed;
+  }
 
   // pid is not set yet. Later, in start_process(), it will be determined.
   // so we have to postpone afterward actions (such as putting 'pcb'
@@ -77,12 +83,8 @@ process_execute (const char *cmdline)
   // create thread!
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
 
-  if (tid == TID_ERROR)
-  {
-    palloc_free_page (pcb);
-    palloc_free_page (file_name);
-    palloc_free_page (cmdline_copy);
-    return TID_ERROR;
+  if (tid == TID_ERROR) {
+    goto execute_failed;
   }
 
   // wait until initialization inside start_process() is complete.
@@ -91,7 +93,16 @@ process_execute (const char *cmdline)
   // process successfully created, maintain child process list
   list_push_back (&(thread_current()->child_list), &(pcb->elem));
 
+  palloc_free_page (file_name);
   return pcb->pid;
+
+execute_failed:
+  // release allocated memory and return
+  if(cmdline_copy) palloc_free_page (cmdline_copy);
+  if(file_name) palloc_free_page (file_name);
+  if(pcb) palloc_free_page (pcb);
+
+  return PID_ERROR;
 }
 
 /* A thread function that loads a user process and starts it
@@ -99,21 +110,31 @@ process_execute (const char *cmdline)
 static void
 start_process (void *pcb_)
 {
+  struct thread *t = thread_current();
   struct process_control_block *pcb = pcb_;
 
-  const char **cmdline_tokens = (const char**) palloc_get_page (0);
+  char *file_name = (char*) pcb->cmdline;
+  bool success = false;
+
+  // cmdline handling
+  const char **cmdline_tokens = (const char**) palloc_get_page(0);
+
+  if (cmdline_tokens == NULL) {
+    printf("[Error] Kernel Error: Not enough memory\n");
+    goto finish_step; // pid being -1, release lock, clean resources
+  }
+
   char* token;
   char* save_ptr;
   int cnt = 0;
-  char *file_name = (char*) pcb->cmdline;
-  struct intr_frame if_;
-  bool success;
   for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
       token = strtok_r(NULL, " ", &save_ptr))
   {
     cmdline_tokens[cnt++] = token;
   }
+
   /* Initialize interrupt frame and load executable. */
+  struct intr_frame if_;
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
@@ -124,8 +145,10 @@ start_process (void *pcb_)
   }
   palloc_free_page (cmdline_tokens);
 
+
+finish_step:
+
   /* Assign PCB */
-  struct thread *t = thread_current();
   // we maintain an one-to-one mapping between pid and tid, with identity function.
   // pid is determined, so interact with process_execute() for maintaining child_list
   pcb->pid = success ? (pid_t)(t->tid) : PID_ERROR;
@@ -137,7 +160,7 @@ start_process (void *pcb_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success)
-    thread_exit ();
+    sys_exit (-1);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
