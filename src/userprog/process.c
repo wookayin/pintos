@@ -239,8 +239,10 @@ process_exit (void)
   uint32_t *pd;
 
   /* Release file for the executable */
-  if(cur->executing_file)
+  if(cur->executing_file) {
+    file_allow_write(cur->executing_file);
     file_close(cur->executing_file);
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
