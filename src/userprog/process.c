@@ -89,9 +89,14 @@ process_execute (const char *cmdline)
 
   // wait until initialization inside start_process() is complete.
   sema_down(&pcb->sema_initialization);
+  if(cmdline_copy) {
+    palloc_free_page (cmdline_copy);
+  }
 
   // process successfully created, maintain child process list
-  list_push_back (&(thread_current()->child_list), &(pcb->elem));
+  if(pcb->pid >= 0) {
+    list_push_back (&(thread_current()->child_list), &(pcb->elem));
+  }
 
   palloc_free_page (file_name);
   return pcb->pid;
@@ -158,7 +163,6 @@ finish_step:
   sema_up(&pcb->sema_initialization);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success)
     sys_exit (-1);
 
@@ -228,7 +232,15 @@ process_wait (tid_t child_tid)
   // remove from child_list
   ASSERT (it != NULL);
   list_remove (it);
-  return child_pcb->exitcode;
+
+  // return the exit code of the child process
+  int retcode = child_pcb->exitcode;
+
+  // Now the pcb object of the child process can be finally freed.
+  // (in this context, the child process is guaranteed to have been exited)
+  palloc_free_page(child_pcb);
+
+  return retcode;
 }
 
 /* Free the current process's resources. */
@@ -237,6 +249,25 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  /* Resources should be cleaned up */
+  // 1. file descriptors
+  struct list *fdlist = &cur->file_descriptors;
+  while (!list_empty(fdlist)) {
+    struct list_elem *e = list_pop_front (fdlist);
+    struct file_desc *desc = list_entry(e, struct file_desc, elem);
+    file_close(desc->file);
+    palloc_free_page(desc); // see sys_open()
+  }
+
+  // 2. clean up pcb object of all children processes
+  struct list *child_list = &cur->child_list;
+  while (!list_empty(child_list)) {
+    struct list_elem *e = list_pop_front (child_list);
+    struct process_control_block *pcb;
+    pcb = list_entry(e, struct process_control_block, elem);
+    palloc_free_page (pcb); // pcb can freed when it is removed from the list
+  }
 
   /* Release file for the executable */
   if(cur->executing_file) {
