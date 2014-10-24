@@ -28,10 +28,10 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void argument_pushing(const char *[], int cnt, void **esp);
+static void push_arguments (const char *[], int cnt, void **esp);
 
 /* Starts a new thread running a user program loaded from
-   FILENAME.  The new thread may be scheduled (and may even exit)
+   `cmdline`. The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 pid_t
@@ -146,7 +146,7 @@ start_process (void *pcb_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
   if (success) {
-    argument_pushing(cmdline_tokens, cnt, &if_.esp); // pushing arguments into stack
+    push_arguments (cmdline_tokens, cnt, &if_.esp);
   }
   palloc_free_page (cmdline_tokens);
 
@@ -606,44 +606,49 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+
+/*
+ * Push arguments into the stack region of user program
+ * (specified by esp), according to the calling convention.
+ */
 static void
-argument_pushing (const char* cmdline_tokens[], int argc, void **esp)
+push_arguments (const char* cmdline_tokens[], int argc, void **esp)
 {
   ASSERT(argc >= 0);
 
   int i, len = 0;
-  int argv_addr[argc];
+  void* argv_addr[argc];
   for (i = 0; i < argc; i++) {
     len = strlen(cmdline_tokens[i]) + 1;
     *esp -= len;
     memcpy(*esp, cmdline_tokens[i], len);
-    argv_addr[i] = (int) *esp;
+    argv_addr[i] = *esp;
   }
 
   // word align
-  *esp = (void*)((int)*esp & 0xfffffffc);
+  *esp = (void*)((unsigned int)(*esp) & 0xfffffffc);
 
   // last null
   *esp -= 4;
-  *(int*)*esp = 0;
+  *((uint32_t*) *esp) = 0;
 
   // setting **esp with argvs
   for (i = argc - 1; i >= 0; i--) {
     *esp -= 4;
-    *(int*)*esp = argv_addr[i];
+    *((void**) *esp) = argv_addr[i];
   }
 
-  //setting **argv
+  // setting **argv (addr of stack, esp)
   *esp -= 4;
-  *(int*)*esp = (int)*esp + 4;
+  *((void**) *esp) = (*esp + 4);
 
-  //setting argc
+  // setting argc
   *esp -= 4;
-  *(int*)*esp = argc;
+  *((int*) *esp) = argc;
 
-  //setting ret
-  *esp-=4;
-  *(int*)*esp = 0;
+  // setting ret addr
+  *esp -= 4;
+  *((int*) *esp) = 0;
 
 }
 
