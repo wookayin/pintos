@@ -76,8 +76,6 @@ static tid_t allocate_tid (void);
 
 void thread_awake (int64_t current_tick);
 
-void thread_priority_donate(struct thread *, int priority);
-
 /* Helper (Auxiliary) functions */
 static bool comparator_greater_thread_priority
   (const struct list_elem *, const struct list_elem *, void *aux);
@@ -595,6 +593,14 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+#ifdef USERPROG
+  // init process-related informations.
+  t->pcb = NULL;
+  list_init(&t->child_list);
+  list_init(&t->file_descriptors);
+  t->executing_file = NULL;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -714,7 +720,7 @@ allocate_tid (void)
 static bool
 comparator_greater_thread_priority (
     const struct list_elem *a,
-    const struct list_elem *b, void *aux)
+    const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *ta, *tb;
   ASSERT (a != NULL);
