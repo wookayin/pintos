@@ -373,7 +373,8 @@ int sys_read(int fd, void *buffer, unsigned size) {
   if(fd == 0) { // stdin
     unsigned i;
     for(i = 0; i < size; ++i) {
-      put_user(buffer + i, input_getc());
+      if(! put_user(buffer + i, input_getc()) )
+        sys_exit(-1); // segfault
     }
     return size;
   }
@@ -447,6 +448,11 @@ get_user (const uint8_t *uaddr) {
  */
 static bool
 put_user (uint8_t *udst, uint8_t byte) {
+  // check that a user pointer `udst` points below PHYS_BASE
+  if (! ((void*)udst < PHYS_BASE)) {
+    return false;
+  }
+
   int error_code;
 
   // as suggested in the reference manual, see (3.1.5)
