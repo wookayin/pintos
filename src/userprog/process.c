@@ -275,6 +275,10 @@ process_exit (void)
     file_close(cur->executing_file);
   }
 
+  // Unblock the waiting parent process, if any, from wait().
+  // now its resource (pcb on page, etc.) can be freed.
+  sema_up (&cur->pcb->sema_wait);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
