@@ -1,6 +1,6 @@
 # PintOS Project
 
-Team 16 : Jongwook Choi, Jaeheum Jeong, Jinsoo Eun
+Team 16 : Jongwook Choi, Jaeheum Jeong
 
 ## Project 1
 
@@ -10,4 +10,5 @@ Team 16 : Jongwook Choi, Jaeheum Jeong, Jinsoo Eun
 ## Project 2
 
 - User Program Exeuction
+- Process Management
 - System Calls
