@@ -26,7 +26,7 @@ struct process_control_block {
 
   bool waiting;             /* indicates whether parent process is waiting on this. */
   bool exited;              /* indicates whether the process is done (exited). */
-                            // TODO: use state enums (STOPPED, RUNNING, READY, ZOMBIE, ...)
+  bool orphan;              /* indicates whether the parent process has terminated before. */
   int32_t exitcode;         /* the exit code passed from exit(), when exited = true */
 
   /* Synchronization */

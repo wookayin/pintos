@@ -75,6 +75,7 @@ process_execute (const char *cmdline)
   pcb->cmdline = cmdline_copy;
   pcb->waiting = false;
   pcb->exited = false;
+  pcb->orphan = false;
   pcb->exitcode = -1; // undefined
 
   sema_init(&pcb->sema_initialization, 0);
@@ -222,8 +223,8 @@ process_wait (tid_t child_tid)
     child_pcb->waiting = true;
   }
 
-  // block until child terminates, and return the exitcode
-  // TODO: scenario of zombie process is tricky!
+  // wait(block) until child terminates
+  // see process_exit() for signaling this semaphore
   if (! child_pcb->exited) {
     sema_down(& (child_pcb->sema_wait));
   }
@@ -266,7 +267,14 @@ process_exit (void)
     struct list_elem *e = list_pop_front (child_list);
     struct process_control_block *pcb;
     pcb = list_entry(e, struct process_control_block, elem);
-    palloc_free_page (pcb); // pcb can freed when it is removed from the list
+    if (pcb->exited == true) {
+      // pcb can freed when it is already terminated
+      palloc_free_page (pcb);
+    } else {
+      // the child process becomes an orphan.
+      // do not free pcb yet, postpone until the child terminates
+      pcb->orphan = true;
+    }
   }
 
   /* Release file for the executable */
@@ -278,6 +286,12 @@ process_exit (void)
   // Unblock the waiting parent process, if any, from wait().
   // now its resource (pcb on page, etc.) can be freed.
   sema_up (&cur->pcb->sema_wait);
+
+  // Destroy the pcb object by itself, if it is orphan.
+  // see (part 2) of above.
+  if (cur->pcb->orphan == true) {
+    palloc_free_page (& cur->pcb);
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
