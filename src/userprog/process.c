@@ -28,10 +28,10 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void argument_pushing(const char *[], int cnt, void **esp);
+static void push_arguments (const char *[], int cnt, void **esp);
 
 /* Starts a new thread running a user program loaded from
-   FILENAME.  The new thread may be scheduled (and may even exit)
+   `cmdline`. The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 pid_t
@@ -75,6 +75,7 @@ process_execute (const char *cmdline)
   pcb->cmdline = cmdline_copy;
   pcb->waiting = false;
   pcb->exited = false;
+  pcb->orphan = false;
   pcb->exitcode = -1; // undefined
 
   sema_init(&pcb->sema_initialization, 0);
@@ -146,7 +147,7 @@ start_process (void *pcb_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
   if (success) {
-    argument_pushing(cmdline_tokens, cnt, &if_.esp); // pushing arguments into stack
+    push_arguments (cmdline_tokens, cnt, &if_.esp);
   }
   palloc_free_page (cmdline_tokens);
 
@@ -222,8 +223,8 @@ process_wait (tid_t child_tid)
     child_pcb->waiting = true;
   }
 
-  // block until child terminates, and return the exitcode
-  // TODO: scenario of zombie process is tricky!
+  // wait(block) until child terminates
+  // see process_exit() for signaling this semaphore
   if (! child_pcb->exited) {
     sema_down(& (child_pcb->sema_wait));
   }
@@ -266,13 +267,30 @@ process_exit (void)
     struct list_elem *e = list_pop_front (child_list);
     struct process_control_block *pcb;
     pcb = list_entry(e, struct process_control_block, elem);
-    palloc_free_page (pcb); // pcb can freed when it is removed from the list
+    if (pcb->exited == true) {
+      // pcb can freed when it is already terminated
+      palloc_free_page (pcb);
+    } else {
+      // the child process becomes an orphan.
+      // do not free pcb yet, postpone until the child terminates
+      pcb->orphan = true;
+    }
   }
 
   /* Release file for the executable */
   if(cur->executing_file) {
     file_allow_write(cur->executing_file);
     file_close(cur->executing_file);
+  }
+
+  // Unblock the waiting parent process, if any, from wait().
+  // now its resource (pcb on page, etc.) can be freed.
+  sema_up (&cur->pcb->sema_wait);
+
+  // Destroy the pcb object by itself, if it is orphan.
+  // see (part 2) of above.
+  if (cur->pcb->orphan == true) {
+    palloc_free_page (& cur->pcb);
   }
 
   /* Destroy the current process's page directory and switch back
@@ -606,44 +624,49 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+
+/*
+ * Push arguments into the stack region of user program
+ * (specified by esp), according to the calling convention.
+ */
 static void
-argument_pushing (const char* cmdline_tokens[], int argc, void **esp)
+push_arguments (const char* cmdline_tokens[], int argc, void **esp)
 {
   ASSERT(argc >= 0);
 
   int i, len = 0;
-  int argv_addr[argc];
+  void* argv_addr[argc];
   for (i = 0; i < argc; i++) {
     len = strlen(cmdline_tokens[i]) + 1;
     *esp -= len;
     memcpy(*esp, cmdline_tokens[i], len);
-    argv_addr[i] = (int) *esp;
+    argv_addr[i] = *esp;
   }
 
   // word align
-  *esp = (void*)((int)*esp & 0xfffffffc);
+  *esp = (void*)((unsigned int)(*esp) & 0xfffffffc);
 
   // last null
   *esp -= 4;
-  *(int*)*esp = 0;
+  *((uint32_t*) *esp) = 0;
 
   // setting **esp with argvs
   for (i = argc - 1; i >= 0; i--) {
     *esp -= 4;
-    *(int*)*esp = argv_addr[i];
+    *((void**) *esp) = argv_addr[i];
   }
 
-  //setting **argv
+  // setting **argv (addr of stack, esp)
   *esp -= 4;
-  *(int*)*esp = (int)*esp + 4;
+  *((void**) *esp) = (*esp + 4);
 
-  //setting argc
+  // setting argc
   *esp -= 4;
-  *(int*)*esp = argc;
+  *((int*) *esp) = argc;
 
-  //setting ret
-  *esp-=4;
-  *(int*)*esp = 0;
+  // setting ret addr
+  *esp -= 4;
+  *((int*) *esp) = 0;
 
 }
 

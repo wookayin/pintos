@@ -10,7 +10,7 @@ typedef int pid_t;
 #define PID_INITIALIZING  ((pid_t) -2)
 
 
-pid_t process_execute (const char *file_name);
+pid_t process_execute (const char *cmdline);
 int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
@@ -26,7 +26,7 @@ struct process_control_block {
 
   bool waiting;             /* indicates whether parent process is waiting on this. */
   bool exited;              /* indicates whether the process is done (exited). */
-                            // TODO: use state enums (STOPPED, RUNNING, READY, ZOMBIE, ...)
+  bool orphan;              /* indicates whether the parent process has terminated before. */
   int32_t exitcode;         /* the exit code passed from exit(), when exited = true */
 
   /* Synchronization */
