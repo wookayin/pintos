@@ -49,11 +49,15 @@ struct lock filesys_lock;
 void
 syscall_init (void)
 {
+  lock_init (&filesys_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 // in case of invalid memory access, fail and exit.
 static void fail_invalid_access(void) {
+  if (lock_held_by_current_thread(&filesys_lock))
+    lock_release (&filesys_lock);
+
   sys_exit (-1);
   NOT_REACHED();
 }
@@ -265,7 +269,9 @@ pid_t sys_exec(const char *cmdline) {
   // so a validation check is required
   check_user((const uint8_t*) cmdline);
 
+  lock_acquire (&filesys_lock); // load() uses filesystem
   pid_t pid = process_execute(cmdline);
+  lock_release (&filesys_lock);
   return pid;
 }
 
@@ -280,7 +286,9 @@ bool sys_create(const char* filename, unsigned initial_size) {
   // memory validation
   check_user((const uint8_t*) filename);
 
+  lock_acquire (&filesys_lock);
   return_code = filesys_create(filename, initial_size);
+  lock_release (&filesys_lock);
   return return_code;
 }
 
@@ -289,7 +297,9 @@ bool sys_remove(const char* filename) {
   // memory validation
   check_user((const uint8_t*) filename);
 
+  lock_acquire (&filesys_lock);
   return_code = filesys_remove(filename);
+  lock_release (&filesys_lock);
   return return_code;
 }
 
@@ -303,9 +313,11 @@ int sys_open(const char* file) {
     return -1;
   }
 
+  lock_acquire (&filesys_lock);
   file_opened = filesys_open(file);
   if (!file_opened) {
     palloc_free_page (fd);
+    lock_release (&filesys_lock);
     return -1;
   }
 
@@ -321,21 +333,28 @@ int sys_open(const char* file) {
   }
   list_push_back(fd_list, &(fd->elem));
 
+  lock_release (&filesys_lock);
   return fd->id;
 }
 
 int sys_filesize(int fd) {
   struct file_desc* file_d;
+
+  lock_acquire (&filesys_lock);
   file_d = find_file_desc(thread_current(), fd);
 
   if(file_d == NULL) {
+    lock_release (&filesys_lock);
     return -1;
   }
 
-  return file_length(file_d->file);
+  int ret = file_length(file_d->file);
+  lock_release (&filesys_lock);
+  return ret;
 }
 
 void sys_seek(int fd, unsigned position) {
+  lock_acquire (&filesys_lock);
   struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
   if(file_d && file_d->file) {
@@ -343,19 +362,27 @@ void sys_seek(int fd, unsigned position) {
   }
   else
     return; // TODO need sys_exit?
+
+  lock_release (&filesys_lock);
 }
 
 unsigned sys_tell(int fd) {
+  lock_acquire (&filesys_lock);
   struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
+  unsigned ret;
   if(file_d && file_d->file) {
-    return file_tell(file_d->file);
+    ret = file_tell(file_d->file);
   }
   else
-    return -1; // TODO need sys_exit?
+    ret = -1; // TODO need sys_exit?
+
+  lock_release (&filesys_lock);
+  return ret;
 }
 
 void sys_close(int fd) {
+  lock_acquire (&filesys_lock);
   struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
   if(file_d && file_d->file) {
@@ -363,6 +390,7 @@ void sys_close(int fd) {
     list_remove(&(file_d->elem));
     palloc_free_page(file_d);
   }
+  lock_release (&filesys_lock);
 }
 
 int sys_read(int fd, void *buffer, unsigned size) {
@@ -370,24 +398,32 @@ int sys_read(int fd, void *buffer, unsigned size) {
   check_user((const uint8_t*) buffer);
   check_user((const uint8_t*) buffer + size - 1);
 
+  lock_acquire (&filesys_lock);
+  int ret;
+
   if(fd == 0) { // stdin
     unsigned i;
     for(i = 0; i < size; ++i) {
-      if(! put_user(buffer + i, input_getc()) )
+      if(! put_user(buffer + i, input_getc()) ) {
+        lock_release (&filesys_lock);
         sys_exit(-1); // segfault
+      }
     }
-    return size;
+    ret = size;
   }
   else {
     // read from file
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
-      return file_read(file_d->file, buffer, size);
+      ret = file_read(file_d->file, buffer, size);
     }
     else // no such file or can't open
-      return -1;
+      ret = -1;
   }
+
+  lock_release (&filesys_lock);
+  return ret;
 }
 
 int sys_write(int fd, const void *buffer, unsigned size) {
@@ -395,20 +431,26 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   check_user((const uint8_t*) buffer);
   check_user((const uint8_t*) buffer + size - 1);
 
+  lock_acquire (&filesys_lock);
+  int ret;
+
   if(fd == 1) { // write to stdout
     putbuf(buffer, size);
-    return size;
+    ret = size;
   }
   else {
     // write into file
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
-      return file_write(file_d->file, buffer, size);
+      ret = file_write(file_d->file, buffer, size);
     }
     else // no such file or can't open
-      return -1;
+      ret = -1;
   }
+
+  lock_release (&filesys_lock);
+  return ret;
 }
 
 /****************** Helper Functions on Memory Access ********************/
