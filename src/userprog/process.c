@@ -16,9 +16,11 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 #ifndef VM
 // alternative of vm-related functions introduced in Project 3
@@ -299,6 +301,12 @@ process_exit (void)
     palloc_free_page (& cur->pcb);
   }
 
+#ifdef VM
+  // Destroy the SPTE.
+  free (cur->supt);
+  cur->supt = NULL;
+#endif
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -416,8 +424,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
-  /* Allocate and activate page directory. */
+  /* Allocate and activate page directory, as well as SPTE. */
   t->pagedir = pagedir_create ();
+#ifdef VM
+  t->supt = vm_supt_create ();
+#endif
+
   if (t->pagedir == NULL)
     goto done;
   process_activate ();
