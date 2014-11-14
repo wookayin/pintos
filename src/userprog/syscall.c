@@ -66,13 +66,15 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   int syscall_number;
-
   ASSERT( sizeof(syscall_number) == 4 ); // assuming x86
 
   // The system call number is in the 32-bit word at the caller's stack pointer.
   memread_user(f->esp, &syscall_number, sizeof(syscall_number));
-
   _DEBUG_PRINTF ("[DEBUG] system call, number = %d!\n", syscall_number);
+
+  // Store the esp, which is needed in the page fault handler.
+  // refer to exception.c:page_fault() (see manual 4.3.3)
+  thread_current()->current_esp = f->esp;
 
   // Dispatch w.r.t system call number
   // SYS_*** constants are defined in syscall-nr.h

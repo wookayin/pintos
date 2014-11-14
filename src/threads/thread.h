@@ -118,6 +118,10 @@ struct thread
     struct list file_descriptors;       /* List of file_descriptors the thread contains */
 
     struct file *executing_file;        /* The executable file of associated process. */
+
+    uint8_t *current_esp;               /* The current value of the user program’s stack pointer.
+                                           A page fault might occur in the kernel, so we might
+                                           need to store esp on transition to kernel mode. (4.3.3) */
 #endif
 
 #ifdef VM

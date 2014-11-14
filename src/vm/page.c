@@ -64,6 +64,29 @@ vm_supt_set_page (struct supplemental_page_table *supt, void *upage)
   }
 }
 
+/**
+ * Install a page (specified by the starting address `upage`)
+ * on the supplemental page table. The page is of type ALL_ZERO,
+ * indicates that all the bytes is (lazily) zero.
+ */
+bool
+vm_supt_install_zeropage (struct supplemental_page_table *supt, void *upage)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
+
+  spte->upage = upage;
+  spte->status = ALL_ZERO;
+
+  struct hash_elem *prev_elem;
+  prev_elem = hash_insert (&supt->page_map, &spte->elem);
+  if (prev_elem == NULL) return true;
+
+  // TODO there is already an entry.
+  PANIC("Duplicated SUPT entry for zeropage");
+  return false;
+}
+
 struct supplemental_page_table_entry*
 vm_supt_lookup (struct supplemental_page_table *supt, void *page)
 {
