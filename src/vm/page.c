@@ -1,10 +1,14 @@
 #include <hash.h>
+#include <string.h>
 #include "lib/kernel/hash.h"
 
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "userprog/pagedir.h"
 #include "vm/page.h"
+#include "vm/frame.h"
 
 static unsigned spte_hash_func(const struct hash_elem *elem, void *aux);
 static bool     spte_less_func(const struct hash_elem *, const struct hash_elem *, void *aux);
@@ -60,6 +64,75 @@ vm_supt_set_page (struct supplemental_page_table *supt, void *upage)
   }
 }
 
+struct supplemental_page_table_entry*
+vm_supt_lookup (struct supplemental_page_table *supt, void *page)
+{
+  // create a temporary object, just for looking up the hash table.
+  struct supplemental_page_table_entry spte_temp;
+  spte_temp.upage = page;
+
+  struct hash_elem *elem = hash_find (&supt->page_map, &spte_temp.elem);
+  if(elem == NULL) return NULL;
+  return hash_entry(elem, struct supplemental_page_table_entry, elem);
+}
+
+bool
+vm_supt_is_valid (struct supplemental_page_table *supt, void *page)
+{
+  /* Find the SUPT entry. If not found, it is an unmanaged page. */
+  struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
+  if(spte == NULL) return false;
+
+  return true;
+}
+
+bool
+vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage)
+{
+  /* see also userprog/exception.c */
+
+  // 1. Check if the memory reference is valid
+  struct supplemental_page_table_entry *spte;
+  spte = vm_supt_lookup(supt, upage);
+  if(spte == NULL) {
+    return false;
+  }
+
+  // 2. Obtain a frame to store the page
+  void *frame_page = vm_frame_allocate(PAL_USER);
+  if(frame_page == NULL) return false;
+
+  // 3. Fetch the data into the frame
+  switch (spte->status)
+  {
+  case ALL_ZERO:
+    memset (frame_page, 0, PGSIZE);
+    break;
+
+  case ON_FRAME:
+    /* nothing to do */
+    break;
+
+  case ON_SWAP:
+    // TODO load from swap
+    PANIC ("unimplemented yet - load from swap");
+    break;
+
+  default:
+    PANIC ("unreachable state");
+  }
+
+  // 4. Point the page table entry for the faulting virtual address to the physical page.
+  if(!pagedir_set_page (pagedir, upage, frame_page, /*writable*/true)) {
+    vm_frame_free(frame_page);
+    return false;
+  }
+
+  spte->status = ON_FRAME;
+  pagedir_set_dirty (pagedir, frame_page, false);
+
+  return true;
+}
 
 
 /* Helpers */

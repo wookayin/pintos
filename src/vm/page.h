@@ -39,4 +39,9 @@ void vm_supt_destroy (struct supplemental_page_table *);
 
 bool vm_supt_set_page (struct supplemental_page_table *supt, void *);
 
+struct supplemental_page_table_entry* vm_supt_lookup (struct supplemental_page_table *supt, void *);
+bool vm_supt_is_valid (struct supplemental_page_table *, void *page);
+
+bool vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage);
+
 #endif
