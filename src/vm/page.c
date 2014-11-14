@@ -31,6 +31,36 @@ vm_supt_destroy (struct supplemental_page_table *supt)
 }
 
 
+/**
+ * Install a page (specified by the starting address `upage`) which
+ * is currently on the frame, in the supplemental page table.
+ *
+ * Returns true if successful, false otherwise.
+ * (In case of failure, a proper handling is required later -- process.c)
+ */
+bool
+vm_supt_set_page (struct supplemental_page_table *supt, void *upage)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
+
+  spte->upage = upage;
+  spte->status = ON_FRAME;
+
+  struct hash_elem *prev_elem;
+  prev_elem = hash_insert (&supt->page_map, &spte->elem);
+  if (prev_elem == NULL) {
+    // successfully inserted into the supplemental page table.
+    return true;
+  }
+  else {
+    // failed. there is already an entry.
+    free (spte);
+    return false;
+  }
+}
+
+
 
 /* Helpers */
 

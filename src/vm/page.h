@@ -4,6 +4,15 @@
 #include <hash.h>
 
 /**
+ * Indicates a state of page.
+ */
+enum page_status {
+  ALL_ZERO,         // All zeros
+  ON_FRAME,         // Actively in memory
+  ON_SWAP           // Swapped (on swap slot)
+};
+
+/**
  * Supplemental page table. The scope is per-process.
  */
 struct supplemental_page_table
@@ -16,6 +25,8 @@ struct supplemental_page_table_entry
   {
     void *upage;              /* Virtual address of the page (the key) */
     struct hash_elem elem;
+
+    enum page_status status;
   };
 
 
@@ -25,5 +36,7 @@ struct supplemental_page_table_entry
 
 struct supplemental_page_table* vm_supt_create (void);
 void vm_supt_destroy (struct supplemental_page_table *);
+
+bool vm_supt_set_page (struct supplemental_page_table *supt, void *);
 
 #endif
