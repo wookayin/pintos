@@ -302,8 +302,11 @@ process_exit (void)
   }
 
 #ifdef VM
-  // Destroy the SPTE.
-  free (cur->supt);
+  // Destroy the SUPT, its all SPTEs, all the frames, and swaps.
+  // Important: All the frames held by this thread should ALSO be freed
+  // (see the destructor of SPTE). Otherwise an access to frame with
+  // its owner thread had been died will result in fault.
+  vm_supt_destroy (cur->supt);
   cur->supt = NULL;
 #endif
 
@@ -743,7 +746,7 @@ install_page (void *upage, void *kpage, bool writable)
   bool success = (pagedir_get_page (t->pagedir, upage) == NULL);
   success = success && pagedir_set_page (t->pagedir, upage, kpage, writable);
 #ifdef VM
-  success = success && vm_supt_set_page (t->supt, upage);
+  success = success && vm_supt_install_frame (t->supt, upage, kpage);
   if(success) vm_frame_unpin(kpage);
 #endif
   return success;

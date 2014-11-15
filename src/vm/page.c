@@ -44,12 +44,14 @@ vm_supt_destroy (struct supplemental_page_table *supt)
  * (In case of failure, a proper handling is required later -- process.c)
  */
 bool
-vm_supt_set_page (struct supplemental_page_table *supt, void *upage)
+vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *kpage)
 {
   struct supplemental_page_table_entry *spte;
   spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
 
   spte->upage = upage;
+  spte->kpage = kpage;
+//  printf("install frame, upage %x, kpage %x\n", upage, kpage);
   spte->status = ON_FRAME;
   spte->swap_index = -1;
 
@@ -80,6 +82,7 @@ vm_supt_install_zeropage (struct supplemental_page_table *supt, void *upage)
   spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
 
   spte->upage = upage;
+  spte->kpage = NULL;
   spte->status = ALL_ZERO;
 
   struct hash_elem *prev_elem;
@@ -100,6 +103,7 @@ vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t
   if(spte == NULL) return false;
 
   spte->status = ON_SWAP;
+  spte->kpage = NULL;
   spte->swap_index = swap_index;
   return true;
 }
@@ -117,6 +121,7 @@ vm_supt_install_filesys (struct supplemental_page_table *supt, void *upage,
   spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
 
   spte->upage = upage;
+  spte->kpage = NULL;
   spte->status = FROM_FILESYS;
   spte->file = file;
   spte->file_offset = offset;
@@ -212,7 +217,10 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
     return false;
   }
 
+  // Make SURE to mapped kpage is stored in the SPTE.
+  spte->kpage = frame_page;
   spte->status = ON_FRAME;
+
   pagedir_set_dirty (pagedir, frame_page, false);
 
   // unpin frame
@@ -256,5 +264,14 @@ static void
 spte_destroy_func(struct hash_elem *elem, void *aux UNUSED)
 {
   struct supplemental_page_table_entry *entry = hash_entry(elem, struct supplemental_page_table_entry, elem);
+
+  // Clean up the associated frame
+  if (entry->kpage != NULL) {
+    ASSERT (entry->status == ON_FRAME);
+//    printf("Remove entry e=%x, upage=%x, kpage=%x\n", entry, entry->upage, entry->kpage);
+    vm_frame_remove_entry (entry->kpage);
+  }
+
+  // Clean up SPTE entry.
   free (entry);
 }

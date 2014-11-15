@@ -36,7 +36,9 @@ struct frame_table_entry
   };
 
 
-struct frame_table_entry* pick_frame_to_evict(void);
+static struct frame_table_entry* pick_frame_to_evict(void);
+static void vm_frame_do_free (void *kpage, bool free_page);
+
 
 void
 vm_frame_init ()
@@ -52,22 +54,27 @@ vm_frame_init ()
 void*
 vm_frame_allocate (enum palloc_flags flags, void *upage)
 {
+  lock_acquire (&frame_lock);
+
   void *frame_page = palloc_get_page (PAL_USER | flags);
   if (frame_page == NULL) {
     // page allocation failed.
 
     /* first, swap out the page */
     struct frame_table_entry *f_evicted = pick_frame_to_evict();
+#ifdef DEBUG
+    printf("f_evicted: %x th=%x, pagedir = %x, up = %x, kp = %x, hash_size=%d\n", f_evicted, f_evicted->t,
+        f_evicted->t->pagedir, f_evicted->upage, f_evicted->kpage, hash_size(&frame_map));
+#endif
     ASSERT (f_evicted->t != NULL);
 
     // clear the page mapping, and replace it with swap
+    ASSERT (f_evicted->t->pagedir != 0xcccccccc);
     pagedir_clear_page(f_evicted->t->pagedir, f_evicted->upage);
 
     swap_index_t swap_idx = vm_swap_out( f_evicted->kpage );
     vm_supt_set_swap(f_evicted->t->supt, f_evicted->upage, swap_idx);
-
-    /* update the page table, and free the frame table */
-    vm_frame_free(f_evicted->kpage);
+    vm_frame_do_free(f_evicted->kpage, true); // f_evicted is also invalidated
 
     frame_page = palloc_get_page (PAL_USER | flags);
     ASSERT (frame_page != NULL); // should success in this chance
@@ -76,6 +83,7 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
   struct frame_table_entry *frame = malloc(sizeof(struct frame_table_entry));
   if(frame == NULL) {
     // frame allocation failed. a critical state or panic?
+    lock_release (&frame_lock);
     return NULL;
   }
 
@@ -85,10 +93,9 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
   frame->pinned = true;         // can't be evicted yet
 
   // insert into hash table
-  lock_acquire (&frame_lock);
   hash_insert (&frame_map, &frame->elem);
-  lock_release (&frame_lock);
 
+  lock_release (&frame_lock);
   return frame_page;
 }
 
@@ -98,6 +105,31 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
 void
 vm_frame_free (void *kpage)
 {
+  lock_acquire (&frame_lock);
+  vm_frame_do_free (kpage, true);
+  lock_release (&frame_lock);
+}
+
+/**
+ * Just removes then entry from table, do not palloc free.
+ */
+void
+vm_frame_remove_entry (void *kpage)
+{
+  lock_acquire (&frame_lock);
+  vm_frame_do_free (kpage, false);
+  lock_release (&frame_lock);
+}
+
+/**
+ * Deallocate a frame or page (internal procedure)
+ * MUST BE CALLED with 'frame_lock' held.
+ */
+void
+vm_frame_do_free (void *kpage, bool free_page)
+{
+  ASSERT (lock_held_by_current_thread(&frame_lock) == true);
+
   ASSERT (is_kernel_vaddr(kpage));
   ASSERT (pg_ofs (kpage) == 0); // should be aligned
 
@@ -113,12 +145,10 @@ vm_frame_free (void *kpage)
   struct frame_table_entry *f;
   f = hash_entry(h, struct frame_table_entry, elem);
 
-  lock_acquire (&frame_lock);
   hash_delete (&frame_map, &f->elem);
-  lock_release (&frame_lock);
 
   // Free resources
-  palloc_free_page(kpage);
+  if(free_page) palloc_free_page(kpage);
   free(f);
 }
 
@@ -129,6 +159,9 @@ struct frame_table_entry* pick_frame_to_evict(void)
 
   // as of now, use the simplest one -- random!
   size_t n = hash_size(&frame_map);
+  if(n == 0)
+    PANIC("Frame table is empty, can't happen - there is a leak somewhere");
+
   static unsigned prng = 1;
 
   while(true) {
@@ -140,7 +173,6 @@ struct frame_table_entry* pick_frame_to_evict(void)
 
     struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
     if(e->pinned) { // it is pinned. try again
-      printf("pinned, continue\n");
       continue;
     }
     else return e;  // unpinned. evict it!

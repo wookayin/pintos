@@ -27,13 +27,17 @@ struct supplemental_page_table
 struct supplemental_page_table_entry
   {
     void *upage;              /* Virtual address of the page (the key) */
+    void *kpage;              /* Kernel page (frame) associated to it.
+                                 Only effective when status == ON_FRAME.
+                                 If the page is not on the frame, should be NULL. */
     struct hash_elem elem;
 
     enum page_status status;
 
     // for ON_SWAP
     swap_index_t swap_index;  /* Stores the swap index if the page is swapped out.
-                                 Only effective when status == ON_FRAME */
+                                 Only effective when status == ON_SWAP */
+
     // for FROM_FILESYS
     struct file *file;
     off_t file_offset;
@@ -49,7 +53,7 @@ struct supplemental_page_table_entry
 struct supplemental_page_table* vm_supt_create (void);
 void vm_supt_destroy (struct supplemental_page_table *);
 
-bool vm_supt_set_page (struct supplemental_page_table *supt, void *);
+bool vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *kpage);
 bool vm_supt_install_zeropage (struct supplemental_page_table *supt, void *);
 
 bool vm_supt_set_swap (struct supplemental_page_table *supt, void *, swap_index_t);
