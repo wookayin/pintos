@@ -50,6 +50,9 @@ vm_supt_set_page (struct supplemental_page_table *supt, void *upage)
 
   spte->upage = upage;
   spte->status = ON_FRAME;
+  spte->swap_index = -1;
+
+//  printf("Install Set page %u\n", upage);
 
   struct hash_elem *prev_elem;
   prev_elem = hash_insert (&supt->page_map, &spte->elem);
@@ -87,6 +90,19 @@ vm_supt_install_zeropage (struct supplemental_page_table *supt, void *upage)
   return false;
 }
 
+bool
+vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t swap_index)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = vm_supt_lookup(supt, page);
+//  printf("SPTE %u\n", spte);
+  if(spte == NULL) return false;
+
+  spte->status = ON_SWAP;
+  spte->swap_index = swap_index;
+  return true;
+}
+
 struct supplemental_page_table_entry*
 vm_supt_lookup (struct supplemental_page_table *supt, void *page)
 {
@@ -100,7 +116,7 @@ vm_supt_lookup (struct supplemental_page_table *supt, void *page)
 }
 
 bool
-vm_supt_is_valid (struct supplemental_page_table *supt, void *page)
+vm_supt_has_entry (struct supplemental_page_table *supt, void *page)
 {
   /* Find the SUPT entry. If not found, it is an unmanaged page. */
   struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
@@ -124,7 +140,6 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   // 2. Obtain a frame to store the page
   void *frame_page = vm_frame_allocate(PAL_USER, upage);
   if(frame_page == NULL) {
-//    printf("[!!!!] VM FRAME FAIL\n");
     return false;
   }
 
@@ -140,8 +155,8 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
     break;
 
   case ON_SWAP:
-    // TODO load from swap
-    PANIC ("unimplemented yet - load from swap");
+    // Swap in: load the data from the swap disc
+    vm_swap_in (spte->swap_index, frame_page);
     break;
 
   default:

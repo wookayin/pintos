@@ -179,13 +179,16 @@ page_fault (struct intr_frame *f)
   on_stack_frame = (esp <= fault_addr || fault_addr == f->esp - 4 || fault_addr == f->esp - 32);
   is_stack_addr = (PHYS_BASE - MAX_STACK_SIZE <= fault_addr && fault_addr < PHYS_BASE);
   if (on_stack_frame && is_stack_addr) {
-    // OK. Do not die.
-    // we need to add new page entry in the SUPT. A promising choice is a zero-page.
-    vm_supt_install_zeropage (curr->supt, fault_page);
+    // OK. Do not die, and grow.
+    // we need to add new page entry in the SUPT, if there was no page entry in the SUPT.
+    // A promising choice is assign a new zero-page.
+    if (vm_supt_has_entry(curr->supt, fault_page) == false)
+      vm_supt_install_zeropage (curr->supt, fault_page);
   }
 
-  if(! vm_load_page(curr->supt, curr->pagedir, fault_page) )
+  if(! vm_load_page(curr->supt, curr->pagedir, fault_page) ) {
     goto PAGE_FAULT_VIOLATED_ACCESS;
+  }
 
   // success
   return;

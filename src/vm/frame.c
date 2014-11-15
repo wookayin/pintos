@@ -33,6 +33,8 @@ struct frame_table_entry
   };
 
 
+struct frame_table_entry* pick_frame_to_evict(void);
+
 void
 vm_frame_init ()
 {
@@ -49,8 +51,23 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
 {
   void *frame_page = palloc_get_page (PAL_USER | flags);
   if (frame_page == NULL) {
-    // page allocation failed. need swappping out after
-    return NULL;
+    // page allocation failed.
+
+    /* first, swap out the page */
+    struct frame_table_entry *f_evicted = pick_frame_to_evict();
+    ASSERT (f_evicted->t != NULL);
+
+    // clear the page mapping, and replace it with swap
+    pagedir_clear_page(f_evicted->t->pagedir, f_evicted->upage);
+
+    swap_index_t swap_idx = vm_swap_out( f_evicted->kpage );
+    vm_supt_set_swap(f_evicted->t->supt, f_evicted->upage, swap_idx);
+
+    /* update the page table, and free the frame table */
+    vm_frame_free(f_evicted->kpage);
+
+    frame_page = palloc_get_page (PAL_USER | flags);
+    ASSERT (frame_page != NULL); // should success in this chance
   }
 
   struct frame_table_entry *frame = malloc(sizeof(struct frame_table_entry));
@@ -97,9 +114,26 @@ vm_frame_free (void *kpage)
   lock_release (&frame_lock);
 
   // Free resources
-  palloc_free_page (kpage);
+  palloc_free_page(kpage);
+  free(f);
 }
 
+/** Frame Eviction Strategy */
+struct frame_table_entry* pick_frame_to_evict(void)
+{
+  // TODO : implement clock-algorithm
+
+  // as of now, use the simplest one -- random!
+  size_t n = hash_size(&frame_map);
+  static unsigned prng = 1;
+  prng = prng * 1664525u + 1013904223u;
+  size_t pointer = prng % n;
+
+  struct hash_iterator it; hash_first(&it, &frame_map);
+  size_t i; for(i=0; i<=pointer; ++i) hash_next(&it);
+
+  return hash_entry(hash_cur(&it), struct frame_table_entry, elem);
+}
 
 /* Helpers */
 

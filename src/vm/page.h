@@ -1,6 +1,7 @@
 #ifndef VM_PAGE_H
 #define VM_PAGE_H
 
+#include "vm/swap.h"
 #include <hash.h>
 
 /**
@@ -27,6 +28,9 @@ struct supplemental_page_table_entry
     struct hash_elem elem;
 
     enum page_status status;
+
+    swap_index_t swap_index;  /* Stores the swap index if the page is swapped out.
+                                 Only effective when status == ON_FRAME */
   };
 
 
@@ -39,9 +43,10 @@ void vm_supt_destroy (struct supplemental_page_table *);
 
 bool vm_supt_set_page (struct supplemental_page_table *supt, void *);
 bool vm_supt_install_zeropage (struct supplemental_page_table *supt, void *);
+bool vm_supt_set_swap (struct supplemental_page_table *supt, void *, swap_index_t);
 
 struct supplemental_page_table_entry* vm_supt_lookup (struct supplemental_page_table *supt, void *);
-bool vm_supt_is_valid (struct supplemental_page_table *, void *page);
+bool vm_supt_has_entry (struct supplemental_page_table *, void *page);
 
 bool vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage);
 

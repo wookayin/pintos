@@ -48,6 +48,8 @@ swap_index_t vm_swap_out (void *page)
         /* target address */ page + (BLOCK_SECTOR_SIZE * i)
         );
   }
+
+  // occupy the slot: available becomes false
   bitmap_set(swap_available, swap_index, false);
   return swap_index;
 }
