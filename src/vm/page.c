@@ -9,6 +9,7 @@
 #include "userprog/pagedir.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "filesys/file.h"
 
 static unsigned spte_hash_func(const struct hash_elem *elem, void *aux);
 static bool     spte_less_func(const struct hash_elem *, const struct hash_elem *, void *aux);
@@ -103,6 +104,36 @@ vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t
   return true;
 }
 
+
+/**
+ * Install a page (specified by the starting address `upage`)
+ * on the supplemental page table, of type FROM_FILESYS.
+ */
+bool
+vm_supt_install_filesys (struct supplemental_page_table *supt, void *upage,
+    struct file * file, off_t offset, uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = (struct supplemental_page_table_entry *) malloc(sizeof(struct supplemental_page_table_entry));
+
+  spte->upage = upage;
+  spte->status = FROM_FILESYS;
+  spte->file = file;
+  spte->file_offset = offset;
+  spte->read_bytes = read_bytes;
+  spte->zero_bytes = zero_bytes;
+  spte->writable = writable;
+
+  struct hash_elem *prev_elem;
+  prev_elem = hash_insert (&supt->page_map, &spte->elem);
+  if (prev_elem == NULL) return true;
+
+  // TODO there is already an entry.
+  PANIC("Duplicated SUPT entry for filesys-page");
+  return false;
+}
+
+
 struct supplemental_page_table_entry*
 vm_supt_lookup (struct supplemental_page_table *supt, void *page)
 {
@@ -125,6 +156,8 @@ vm_supt_has_entry (struct supplemental_page_table *supt, void *page)
   return true;
 }
 
+static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *, void *);
+
 bool
 vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage)
 {
@@ -144,6 +177,7 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   }
 
   // 3. Fetch the data into the frame
+  bool writable = true;
   switch (spte->status)
   {
   case ALL_ZERO:
@@ -159,12 +193,21 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
     vm_swap_in (spte->swap_index, frame_page);
     break;
 
+  case FROM_FILESYS:
+    if( vm_load_page_from_filesys(spte, frame_page) == false) {
+      vm_frame_free(frame_page);
+      return false;
+    }
+
+    writable = spte->writable;
+    break;
+
   default:
     PANIC ("unreachable state");
   }
 
   // 4. Point the page table entry for the faulting virtual address to the physical page.
-  if(!pagedir_set_page (pagedir, upage, frame_page, /*writable*/true)) {
+  if(!pagedir_set_page (pagedir, upage, frame_page, writable)) {
     vm_frame_free(frame_page);
     return false;
   }
@@ -178,6 +221,20 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   return true;
 }
 
+static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *spte, void *kpage)
+{
+  file_seek (spte->file, spte->file_offset);
+
+  // read bytes from the file
+  int n_read = file_read (spte->file, kpage, spte->read_bytes);
+  if(n_read != (int)spte->read_bytes)
+    return false;
+
+  // remain bytes are just zero
+  ASSERT (spte->read_bytes + spte->zero_bytes == PGSIZE);
+  memset (kpage + n_read, 0, spte->zero_bytes);
+  return true;
+}
 
 /* Helpers */
 
