@@ -730,6 +730,7 @@ install_page (void *upage, void *kpage, bool writable)
   success = success && pagedir_set_page (t->pagedir, upage, kpage, writable);
 #ifdef VM
   success = success && vm_supt_set_page (t->supt, upage);
+  if(success) vm_frame_unpin(kpage);
 #endif
   return success;
 }

@@ -30,6 +30,9 @@ struct frame_table_entry
 
     void *upage;               /* User (Virtual Memory) Address, pointer to page */
     struct thread *t;          /* The associated thread. */
+
+    bool pinned;               /* Used to prevent a frame from being evicted, while it is acquiring some resources.
+                                  If it is true, it is never evicted. */
   };
 
 
@@ -79,6 +82,7 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
   frame->t = thread_current ();
   frame->upage = upage;
   frame->kpage = frame_page;
+  frame->pinned = true;         // can't be evicted yet
 
   // insert into hash table
   lock_acquire (&frame_lock);
@@ -126,14 +130,44 @@ struct frame_table_entry* pick_frame_to_evict(void)
   // as of now, use the simplest one -- random!
   size_t n = hash_size(&frame_map);
   static unsigned prng = 1;
-  prng = prng * 1664525u + 1013904223u;
-  size_t pointer = prng % n;
 
-  struct hash_iterator it; hash_first(&it, &frame_map);
-  size_t i; for(i=0; i<=pointer; ++i) hash_next(&it);
+  while(true) {
+    prng = prng * 1664525u + 1013904223u;
+    size_t pointer = prng % n;
 
-  return hash_entry(hash_cur(&it), struct frame_table_entry, elem);
+    struct hash_iterator it; hash_first(&it, &frame_map);
+    size_t i; for(i=0; i<=pointer; ++i) hash_next(&it);
+
+    struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
+    if(e->pinned) { // it is pinned. try again
+      printf("pinned, continue\n");
+      continue;
+    }
+    else return e;  // unpinned. evict it!
+  }
 }
+
+
+void
+vm_frame_unpin (void* kpage)
+{
+  lock_acquire (&frame_lock);
+
+  // hash lookup : a temporary entry
+  struct frame_table_entry f_tmp;
+  f_tmp.kpage = kpage;
+  struct hash_elem *h = hash_find (&frame_map, &(f_tmp.elem));
+  if (h == NULL) {
+    PANIC ("The frame to be unpinned does not exist");
+  }
+
+  struct frame_table_entry *f;
+  f = hash_entry(h, struct frame_table_entry, elem);
+  f->pinned = false; // unpin.
+
+  lock_release (&frame_lock);
+}
+
 
 /* Helpers */
 

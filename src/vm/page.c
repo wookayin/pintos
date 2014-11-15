@@ -172,6 +172,9 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   spte->status = ON_FRAME;
   pagedir_set_dirty (pagedir, frame_page, false);
 
+  // unpin frame
+  vm_frame_unpin(frame_page);
+
   return true;
 }
 
