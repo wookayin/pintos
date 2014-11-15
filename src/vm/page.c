@@ -122,8 +122,11 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   }
 
   // 2. Obtain a frame to store the page
-  void *frame_page = vm_frame_allocate(PAL_USER);
-  if(frame_page == NULL) return false;
+  void *frame_page = vm_frame_allocate(PAL_USER, upage);
+  if(frame_page == NULL) {
+//    printf("[!!!!] VM FRAME FAIL\n");
+    return false;
+  }
 
   // 3. Fetch the data into the frame
   switch (spte->status)

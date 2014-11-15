@@ -60,7 +60,8 @@ void vm_swap_in (swap_index_t swap_index, void *page)
 
   // check the swap region
   ASSERT (swap_index < swap_size);
-  if (bitmap_test(swap_available, swap_index) == false) {
+  if (bitmap_test(swap_available, swap_index) == true) {
+    // still available slot, error
     PANIC ("Error, invalid read access to unassigned swap block");
   }
 

@@ -24,7 +24,7 @@
 
 #ifndef VM
 // alternative of vm-related functions introduced in Project 3
-#define vm_frame_allocate(x) palloc_get_page(x)
+#define vm_frame_allocate(x, y) palloc_get_page(x)
 #define vm_frame_free(x) palloc_free_page(x)
 #endif
 
@@ -615,7 +615,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = vm_frame_allocate (PAL_USER);
+      uint8_t *kpage = vm_frame_allocate (PAL_USER, upage);
       if (kpage == NULL)
         return false;
 
@@ -697,7 +697,8 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = vm_frame_allocate (PAL_USER | PAL_ZERO);
+  // upage address is the first segment of stack.
+  kpage = vm_frame_allocate (PAL_USER | PAL_ZERO, PHYS_BASE - PGSIZE);
   if (kpage != NULL)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
