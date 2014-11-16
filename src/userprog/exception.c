@@ -157,6 +157,16 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef DEBUG
+  if(fault_addr == 0x80ac6df || fault_addr == 0xcccccccc || fault_addr == 0xffffffff) {
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  }
+#endif
+
 #if VM
   /* Virtual memory handling.
    * First, bring in the page to which fault_addr refers. */

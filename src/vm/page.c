@@ -175,6 +175,11 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
     return false;
   }
 
+  if(spte->status == ON_FRAME) {
+    // already loaded
+    return true;
+  }
+
   // 2. Obtain a frame to store the page
   void *frame_page = vm_frame_allocate(PAL_USER, upage);
   if(frame_page == NULL) {
@@ -245,7 +250,13 @@ vm_supt_mm_unmap(
       spte, spte->status, spte->upage, spte->upage, spte->kpage, spte->kpage);
 #endif
 
-  // TODO pin the frame if exists
+  // Pin the associated frame if loaded
+  // otherwise, a page fault could occur while swapping in (reading the swap disk)
+  if (spte->status == ON_FRAME) {
+    ASSERT (spte->kpage != NULL);
+    vm_frame_pin (spte->kpage);
+  }
+
 
   // see also, vm_load_page()
   switch (spte->status)
@@ -300,6 +311,33 @@ static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *spte
   ASSERT (spte->read_bytes + spte->zero_bytes == PGSIZE);
   memset (kpage + n_read, 0, spte->zero_bytes);
   return true;
+}
+
+
+void
+vm_pin_page(struct supplemental_page_table *supt, void *page)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = vm_supt_lookup(supt, page);
+  if(spte == NULL) {
+    // ignore. stack may be grow
+    return;
+  }
+
+  ASSERT (spte->status == ON_FRAME);
+  vm_frame_pin (spte->kpage);
+}
+
+void
+vm_unpin_page(struct supplemental_page_table *supt, void *page)
+{
+  struct supplemental_page_table_entry *spte;
+  spte = vm_supt_lookup(supt, page);
+  if(spte == NULL) PANIC ("request page is non-existent");
+
+  if (spte->status == ON_FRAME) {
+    vm_frame_unpin (spte->kpage);
+  }
 }
 
 

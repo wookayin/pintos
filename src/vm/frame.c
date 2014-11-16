@@ -200,8 +200,8 @@ struct frame_table_entry* pick_frame_to_evict( uint32_t *pagedir )
 }
 
 
-void
-vm_frame_unpin (void* kpage)
+static void
+vm_frame_set_pinned (void *kpage, bool new_value)
 {
   lock_acquire (&frame_lock);
 
@@ -210,14 +210,24 @@ vm_frame_unpin (void* kpage)
   f_tmp.kpage = kpage;
   struct hash_elem *h = hash_find (&frame_map, &(f_tmp.elem));
   if (h == NULL) {
-    PANIC ("The frame to be unpinned does not exist");
+    PANIC ("The frame to be pinned/unpinned does not exist");
   }
 
   struct frame_table_entry *f;
   f = hash_entry(h, struct frame_table_entry, elem);
-  f->pinned = false; // unpin.
+  f->pinned = new_value;
 
   lock_release (&frame_lock);
+}
+
+void
+vm_frame_unpin (void* kpage) {
+  vm_frame_set_pinned (kpage, false);
+}
+
+void
+vm_frame_pin (void* kpage) {
+  vm_frame_set_pinned (kpage, true);
 }
 
 

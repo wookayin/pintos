@@ -53,6 +53,9 @@ mmapid_t sys_mmap(int fd, void *);
 bool sys_munmap(mmapid_t);
 
 static struct mmap_desc* find_mmap_desc(struct thread *, mmapid_t fd);
+
+void preload_and_pin_pages(const void *, size_t);
+void unpin_preloaded_pages(const void *, size_t);
 #endif
 
 struct lock filesys_lock;
@@ -452,7 +455,16 @@ int sys_read(int fd, void *buffer, unsigned size) {
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
+
+#ifdef VM
+      preload_and_pin_pages(buffer, size);
+#endif
+
       ret = file_read(file_d->file, buffer, size);
+
+#ifdef VM
+      unpin_preloaded_pages(buffer, size);
+#endif
     }
     else // no such file or can't open
       ret = -1;
@@ -479,7 +491,15 @@ int sys_write(int fd, const void *buffer, unsigned size) {
     struct file_desc* file_d = find_file_desc(thread_current(), fd);
 
     if(file_d && file_d->file) {
+#ifdef VM
+      preload_and_pin_pages(buffer, size);
+#endif
+
       ret = file_write(file_d->file, buffer, size);
+
+#ifdef VM
+      unpin_preloaded_pages(buffer, size);
+#endif
     }
     else // no such file or can't open
       ret = -1;
@@ -709,4 +729,30 @@ find_mmap_desc(struct thread *t, mmapid_t mid)
 
   return NULL; // not found
 }
+
+
+void preload_and_pin_pages(const void *buffer, size_t size)
+{
+  struct supplemental_page_table *supt = thread_current()->supt;
+  uint32_t *pagedir = thread_current()->pagedir;
+
+  void *upage;
+  for(upage = pg_round_down(buffer); upage < buffer + size; upage += PGSIZE)
+  {
+    vm_load_page (supt, pagedir, upage);
+    vm_pin_page (supt, upage);
+  }
+}
+
+void unpin_preloaded_pages(const void *buffer, size_t size)
+{
+  struct supplemental_page_table *supt = thread_current()->supt;
+
+  void *upage;
+  for(upage = pg_round_down(buffer); upage < buffer + size; upage += PGSIZE)
+  {
+    vm_unpin_page (supt, upage);
+  }
+}
+
 #endif
