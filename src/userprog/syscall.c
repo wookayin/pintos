@@ -596,6 +596,7 @@ bool sys_munmap(mmapid_t mid)
 
     // Free resources, and remove from the list
     list_remove(& mmap_d->elem);
+    file_close(mmap_d->file);
     free(mmap_d);
   }
   lock_release (&filesys_lock);

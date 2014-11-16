@@ -73,8 +73,13 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
     ASSERT (f_evicted->t->pagedir != (void*)0xcccccccc);
     pagedir_clear_page(f_evicted->t->pagedir, f_evicted->upage);
 
+    bool is_dirty = false;
+    is_dirty = is_dirty || pagedir_is_dirty(f_evicted->t->pagedir, f_evicted->upage);
+    is_dirty = is_dirty || pagedir_is_dirty(f_evicted->t->pagedir, f_evicted->kpage);
+
     swap_index_t swap_idx = vm_swap_out( f_evicted->kpage );
     vm_supt_set_swap(f_evicted->t->supt, f_evicted->upage, swap_idx);
+    vm_supt_set_dirty(f_evicted->t->supt, f_evicted->upage, is_dirty);
     vm_frame_do_free(f_evicted->kpage, true); // f_evicted is also invalidated
 
     frame_page = palloc_get_page (PAL_USER | flags);

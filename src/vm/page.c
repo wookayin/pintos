@@ -53,6 +53,7 @@ vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *
   spte->kpage = kpage;
 //  printf("install frame, upage %x, kpage %x\n", upage, kpage);
   spte->status = ON_FRAME;
+  spte->dirty = false;
   spte->swap_index = -1;
 
 //  printf("Install Set page %u\n", upage);
@@ -84,6 +85,7 @@ vm_supt_install_zeropage (struct supplemental_page_table *supt, void *upage)
   spte->upage = upage;
   spte->kpage = NULL;
   spte->status = ALL_ZERO;
+  spte->dirty = false;
 
   struct hash_elem *prev_elem;
   prev_elem = hash_insert (&supt->page_map, &spte->elem);
@@ -123,6 +125,7 @@ vm_supt_install_filesys (struct supplemental_page_table *supt, void *upage,
   spte->upage = upage;
   spte->kpage = NULL;
   spte->status = FROM_FILESYS;
+  spte->dirty = false;
   spte->file = file;
   spte->file_offset = offset;
   spte->read_bytes = read_bytes;
@@ -158,6 +161,16 @@ vm_supt_has_entry (struct supplemental_page_table *supt, void *page)
   struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
   if(spte == NULL) return false;
 
+  return true;
+}
+
+bool
+vm_supt_set_dirty (struct supplemental_page_table *supt, void *page, bool value)
+{
+  struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
+  if (spte == NULL) PANIC("set dirty - the request page doesn't exist");
+
+  spte->dirty = spte->dirty || value;
   return true;
 }
 
@@ -266,7 +279,7 @@ vm_supt_mm_unmap(
 
     // Dirty frame handling (write into file)
     // Check if the upage or mapped frame is dirty. If so, write to file.
-    bool is_dirty = false;
+    bool is_dirty = spte->dirty;
     is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->upage);
     is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->kpage);
     if(is_dirty) {
@@ -279,7 +292,21 @@ vm_supt_mm_unmap(
     break;
 
   case ON_SWAP:
-    vm_swap_free (spte->swap_index);
+    {
+      bool is_dirty = spte->dirty;
+      is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->upage);
+      if (is_dirty) {
+        // load from swap, and write back to file
+        void *tmp_page = palloc_get_page(0); // in the kernel
+        vm_swap_in (spte->swap_index, tmp_page);
+        file_write_at (f, tmp_page, PGSIZE, offset);
+        palloc_free_page(tmp_page);
+      }
+      else {
+        // just throw away the swap.
+        vm_swap_free (spte->swap_index);
+      }
+    }
     break;
 
   case FROM_FILESYS:

@@ -34,6 +34,8 @@ struct supplemental_page_table_entry
 
     enum page_status status;
 
+    bool dirty;               /* Dirty bit. */
+
     // for ON_SWAP
     swap_index_t swap_index;  /* Stores the swap index if the page is swapped out.
                                  Only effective when status == ON_SWAP */
@@ -63,6 +65,8 @@ bool vm_supt_install_filesys (struct supplemental_page_table *supt, void *page,
 
 struct supplemental_page_table_entry* vm_supt_lookup (struct supplemental_page_table *supt, void *);
 bool vm_supt_has_entry (struct supplemental_page_table *, void *page);
+
+bool vm_supt_set_dirty (struct supplemental_page_table *supt, void *, bool);
 
 bool vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage);
 
