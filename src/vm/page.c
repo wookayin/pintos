@@ -229,6 +229,56 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
   return true;
 }
 
+bool
+vm_supt_mm_unmap(
+    struct supplemental_page_table *supt, uint32_t *pagedir,
+    void *page, struct file *f, off_t offset)
+{
+  file_seek(f, offset);
+
+  struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
+  if(spte == NULL) {
+    PANIC ("munmap - some page is missing; can't happen!");
+  }
+#if 0
+  printf("[unmap] spte = %x (status = %d), upage = %x (%d), kpage = %x (%d)\n",
+      spte, spte->status, spte->upage, spte->upage, spte->kpage, spte->kpage);
+#endif
+
+  // TODO pin the frame if exists
+
+  // see also, vm_load_page()
+  switch (spte->status)
+  {
+  case ON_FRAME:
+    // TODO dirty frame handling (write into file)
+
+    // clear the page mapping, and release the frame
+    ASSERT (spte->kpage != NULL);
+    vm_frame_free (spte->kpage);
+    pagedir_clear_page (pagedir, spte->upage);
+    break;
+
+  case ON_SWAP:
+    vm_swap_free (spte->swap_index);
+    break;
+
+  case FROM_FILESYS:
+    // do nothing.
+    break;
+
+  default:
+    // Impossible, such as ALL_ZERO
+    PANIC ("unreachable state");
+  }
+
+  // the supplemental page table entry is also removed.
+  // so that the unmapped memory is unreachable. Later access will fault.
+  hash_delete(& supt->page_map, &spte->elem);
+  return true;
+}
+
+
 static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *spte, void *kpage)
 {
   file_seek (spte->file, spte->file_offset);
@@ -243,6 +293,7 @@ static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *spte
   memset (kpage + n_read, 0, spte->zero_bytes);
   return true;
 }
+
 
 /* Helpers */
 

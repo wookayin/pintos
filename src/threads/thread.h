@@ -127,6 +127,9 @@ struct thread
 #ifdef VM
     // Project 3: Supplemental page table.
     struct supplemental_page_table *supt;   /* Supplemental Page Table. */
+
+    // Project 3: Memory Mapped Files.
+    struct list mmap_list;              /* List of struct mmap_desc. */
 #endif
 
     /* Owned by thread.c. */

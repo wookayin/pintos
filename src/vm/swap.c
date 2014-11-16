@@ -77,3 +77,14 @@ void vm_swap_in (swap_index_t swap_index, void *page)
 
   bitmap_set(swap_available, swap_index, true);
 }
+
+void
+vm_swap_free (swap_index_t swap_index)
+{
+  // check the swap region
+  ASSERT (swap_index < swap_size);
+  if (bitmap_test(swap_available, swap_index) == true) {
+    PANIC ("Error, invalid free request to unassigned swap block");
+  }
+  bitmap_set(swap_available, swap_index, true);
+}

@@ -66,4 +66,7 @@ bool vm_supt_has_entry (struct supplemental_page_table *, void *page);
 
 bool vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage);
 
+bool vm_supt_mm_unmap(struct supplemental_page_table *supt, uint32_t *pagedir,
+    void *page, struct file *f, off_t offset);
+
 #endif

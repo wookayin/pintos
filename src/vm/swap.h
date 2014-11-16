@@ -23,4 +23,10 @@ swap_index_t vm_swap_out (void *page);
  */
 void vm_swap_in (swap_index_t swap_index, void *page);
 
+/**
+ * Free Swap: drop the swap region.
+ */
+void vm_swap_free (swap_index_t swap_index);
+
+
 #endif /* vm/swap.h */
