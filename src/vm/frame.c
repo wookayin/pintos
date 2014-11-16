@@ -36,7 +36,7 @@ struct frame_table_entry
   };
 
 
-static struct frame_table_entry* pick_frame_to_evict(void);
+static struct frame_table_entry* pick_frame_to_evict(uint32_t* pagedir);
 static void vm_frame_do_free (void *kpage, bool free_page);
 
 
@@ -61,12 +61,12 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
     // page allocation failed.
 
     /* first, swap out the page */
-    struct frame_table_entry *f_evicted = pick_frame_to_evict();
+    struct frame_table_entry *f_evicted = pick_frame_to_evict( thread_current()->pagedir );
 #ifdef DEBUG
     printf("f_evicted: %x th=%x, pagedir = %x, up = %x, kp = %x, hash_size=%d\n", f_evicted, f_evicted->t,
         f_evicted->t->pagedir, f_evicted->upage, f_evicted->kpage, hash_size(&frame_map));
 #endif
-    ASSERT (f_evicted->t != NULL);
+    ASSERT (f_evicted != NULL && f_evicted->t != NULL);
 
     // clear the page mapping, and replace it with swap
     ASSERT (f_evicted->t->pagedir != (void*)0xcccccccc);
@@ -153,30 +153,49 @@ vm_frame_do_free (void *kpage, bool free_page)
 }
 
 /** Frame Eviction Strategy */
-struct frame_table_entry* pick_frame_to_evict(void)
+struct frame_table_entry* pick_frame_to_evict( uint32_t *pagedir )
 {
-  // TODO : implement clock-algorithm
-
-  // as of now, use the simplest one -- random!
   size_t n = hash_size(&frame_map);
-  if(n == 0)
-    PANIC("Frame table is empty, can't happen - there is a leak somewhere");
+  if(n == 0) PANIC("Frame table is empty, can't happen - there is a leak somewhere");
 
-  static unsigned prng = 1;
+  static size_t victim_pointer = 0;
 
-  while(true) {
-    prng = prng * 1664525u + 1013904223u;
-    size_t pointer = prng % n;
+  // get [victim_pointer]-th entry
+  struct hash_iterator it; hash_first(&it, &frame_map);
+  size_t i; for(i=0; i<=victim_pointer; ++i) hash_next(&it);
 
-    struct hash_iterator it; hash_first(&it, &frame_map);
-    size_t i; for(i=0; i<=pointer; ++i) hash_next(&it);
-
+  // scan through (the last section)
+  // TODO improve with circular linked list.
+  do {
     struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
-    if(e->pinned) { // it is pinned. try again
-      continue;
+    if(e->pinned) continue;
+
+    // if not referenced, evict
+    if(! pagedir_is_accessed(pagedir, e->upage)) {
+      return e;
     }
-    else return e;  // unpinned. evict it!
-  }
+    // give a second chance.
+    pagedir_set_accessed(pagedir, e->upage, false);
+    victim_pointer = (victim_pointer + 1) % n;
+  } while( hash_next(&it) );
+
+  // scan through (the first section)
+  hash_first(&it, &frame_map);
+  hash_next(&it);
+  do {
+    struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
+    if(e->pinned) continue;
+
+    // if not referenced, evict
+    if(! pagedir_is_accessed(pagedir, e->upage)) {
+      return e;
+    }
+    // give a second chance.
+    pagedir_set_accessed(pagedir, e->upage, false);
+    victim_pointer = (victim_pointer + 1) % n;
+  } while ( hash_next(&it) );
+
+  return NULL; // !?
 }
 
 
