@@ -69,7 +69,7 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
     ASSERT (f_evicted->t != NULL);
 
     // clear the page mapping, and replace it with swap
-    ASSERT (f_evicted->t->pagedir != 0xcccccccc);
+    ASSERT (f_evicted->t->pagedir != (void*)0xcccccccc);
     pagedir_clear_page(f_evicted->t->pagedir, f_evicted->upage);
 
     swap_index_t swap_idx = vm_swap_out( f_evicted->kpage );

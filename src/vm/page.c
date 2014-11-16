@@ -251,10 +251,18 @@ vm_supt_mm_unmap(
   switch (spte->status)
   {
   case ON_FRAME:
-    // TODO dirty frame handling (write into file)
+    ASSERT (spte->kpage != NULL);
+
+    // Dirty frame handling (write into file)
+    // Check if the upage or mapped frame is dirty. If so, write to file.
+    bool is_dirty = false;
+    is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->upage);
+    is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->kpage);
+    if(is_dirty) {
+      file_write_at (f, spte->upage, PGSIZE, offset);
+    }
 
     // clear the page mapping, and release the frame
-    ASSERT (spte->kpage != NULL);
     vm_frame_free (spte->kpage);
     pagedir_clear_page (pagedir, spte->upage);
     break;

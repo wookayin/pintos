@@ -268,6 +268,17 @@ process_exit (void)
     file_close(desc->file);
     palloc_free_page(desc); // see sys_open()
   }
+#ifdef VM
+  // mmap descriptors
+  struct list *mmlist = &cur->mmap_list;
+  while (!list_empty(mmlist)) {
+    struct list_elem *e = list_begin (mmlist);
+    struct mmap_desc *desc = list_entry(e, struct mmap_desc, elem);
+
+    // in sys_munmap(), the element is removed from the list
+    ASSERT( sys_munmap (desc->id) == true );
+  }
+#endif
 
   // 2. clean up pcb object of all children processes
   struct list *child_list = &cur->child_list;
