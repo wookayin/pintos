@@ -62,7 +62,8 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
 
     /* first, swap out the page */
     struct frame_table_entry *f_evicted = pick_frame_to_evict( thread_current()->pagedir );
-#ifdef DEBUG
+
+#if DEBUG
     printf("f_evicted: %x th=%x, pagedir = %x, up = %x, kp = %x, hash_size=%d\n", f_evicted, f_evicted->t,
         f_evicted->t->pagedir, f_evicted->upage, f_evicted->kpage, hash_size(&frame_map));
 #endif

@@ -330,6 +330,9 @@ spte_destroy_func(struct hash_elem *elem, void *aux UNUSED)
 //    printf("Remove entry e=%x, upage=%x, kpage=%x\n", entry, entry->upage, entry->kpage);
     vm_frame_remove_entry (entry->kpage);
   }
+  else if(entry->status == ON_SWAP) {
+    vm_swap_free (entry->swap_index);
+  }
 
   // Clean up SPTE entry.
   free (entry);
