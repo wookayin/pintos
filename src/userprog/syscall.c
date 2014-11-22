@@ -290,7 +290,6 @@ void sys_exit(int status) {
   // and pass the return code.
   struct process_control_block *pcb = thread_current()->pcb;
   if(pcb != NULL) {
-    pcb->exited = true;
     pcb->exitcode = status;
   }
   else {
