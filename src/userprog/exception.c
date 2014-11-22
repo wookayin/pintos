@@ -3,8 +3,16 @@
 #include <stdio.h>
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
+#include "userprog/pagedir.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#ifdef VM
+#include "vm/page.h"
+#include "vm/frame.h"
+#endif
+
+#define MAX_STACK_SIZE 0x800000
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -149,17 +157,64 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef DEBUG
+  if(fault_addr == 0x80ac6df || fault_addr == 0xcccccccc || fault_addr == 0xffffffff) {
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  }
+#endif
+
+#if VM
+  /* Virtual memory handling.
+   * First, bring in the page to which fault_addr refers. */
+  struct thread *curr = thread_current(); /* Current thread. */
+  void* fault_page = (void*) pg_round_down(fault_addr);
+
+  if (!not_present) {
+    // attempt to write to a read-only region is always killed.
+    goto PAGE_FAULT_VIOLATED_ACCESS;
+  }
+
+  /* (4.3.3) Obtain the current value of the user program's stack pointer.
+   * If the page fault is from user mode, we can obtain from intr_frame `f`,
+   * but we cannot from kernel mode. We've stored the current esp
+   * at the beginning of system call into the thread for this case. */
+  void* esp = user ? f->esp : curr->current_esp;
+
+  // Stack Growth
+  bool on_stack_frame, is_stack_addr;
+  on_stack_frame = (esp <= fault_addr || fault_addr == f->esp - 4 || fault_addr == f->esp - 32);
+  is_stack_addr = (PHYS_BASE - MAX_STACK_SIZE <= fault_addr && fault_addr < PHYS_BASE);
+  if (on_stack_frame && is_stack_addr) {
+    // OK. Do not die, and grow.
+    // we need to add new page entry in the SUPT, if there was no page entry in the SUPT.
+    // A promising choice is assign a new zero-page.
+    if (vm_supt_has_entry(curr->supt, fault_page) == false)
+      vm_supt_install_zeropage (curr->supt, fault_page);
+  }
+
+  if(! vm_load_page(curr->supt, curr->pagedir, fault_page) ) {
+    goto PAGE_FAULT_VIOLATED_ACCESS;
+  }
+
+  // success
+  return;
+
+
+PAGE_FAULT_VIOLATED_ACCESS:
+#endif
   /* (3.1.5) a page fault in the kernel merely sets eax to 0xffffffff
-   * and copies its former value into eip */
+   * and copies its former value into eip. see syscall.c:get_user() */
   if(!user) { // kernel mode
     f->eip = (void *) f->eax;
     f->eax = 0xffffffff;
     return;
   }
 
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
+  /* Page fault can't be handled - kill the process */
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
