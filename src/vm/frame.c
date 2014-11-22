@@ -201,7 +201,7 @@ struct frame_table_entry* pick_frame_to_evict( uint32_t *pagedir )
     victim_pointer = (victim_pointer + 1) % n;
   } while ( hash_next(&it) );
 
-  return NULL; // !?
+  PANIC ("Can't evict any frame -- Not enough memory!\n");
 }
 
 

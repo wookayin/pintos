@@ -250,10 +250,8 @@ vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upag
 bool
 vm_supt_mm_unmap(
     struct supplemental_page_table *supt, uint32_t *pagedir,
-    void *page, struct file *f, off_t offset)
+    void *page, struct file *f, off_t offset, size_t bytes)
 {
-  file_seek(f, offset);
-
   struct supplemental_page_table_entry *spte = vm_supt_lookup(supt, page);
   if(spte == NULL) {
     PANIC ("munmap - some page is missing; can't happen!");
@@ -283,7 +281,7 @@ vm_supt_mm_unmap(
     is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->upage);
     is_dirty = is_dirty || pagedir_is_dirty(pagedir, spte->kpage);
     if(is_dirty) {
-      file_write_at (f, spte->upage, PGSIZE, offset);
+      file_write_at (f, spte->upage, bytes, offset);
     }
 
     // clear the page mapping, and release the frame

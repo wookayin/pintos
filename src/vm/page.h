@@ -71,7 +71,7 @@ bool vm_supt_set_dirty (struct supplemental_page_table *supt, void *, bool);
 bool vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage);
 
 bool vm_supt_mm_unmap(struct supplemental_page_table *supt, uint32_t *pagedir,
-    void *page, struct file *f, off_t offset);
+    void *page, struct file *f, off_t offset, size_t bytes);
 
 void vm_pin_page(struct supplemental_page_table *supt, void *page);
 void vm_unpin_page(struct supplemental_page_table *supt, void *page);

@@ -590,7 +590,8 @@ bool sys_munmap(mmapid_t mid)
     size_t offset, file_size = mmap_d->size;
     for(offset = 0; offset < file_size; offset += PGSIZE) {
       void *addr = mmap_d->addr + offset;
-      vm_supt_mm_unmap (curr->supt, curr->pagedir, addr, mmap_d->file, offset);
+      size_t bytes = (offset + PGSIZE < file_size ? PGSIZE : file_size - offset);
+      vm_supt_mm_unmap (curr->supt, curr->pagedir, addr, mmap_d->file, offset, bytes);
     }
 
     // Free resources, and remove from the list
