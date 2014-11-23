@@ -1,6 +1,8 @@
 #include <hash.h>
+#include <list.h>
 #include <stdio.h>
 #include "lib/kernel/hash.h"
+#include "lib/kernel/list.h"
 
 #include "vm/frame.h"
 #include "threads/thread.h"
@@ -16,6 +18,10 @@ static struct lock frame_lock;
 /* A mapping from physical address to frame table entry. */
 static struct hash frame_map;
 
+/* A (circular) list of frames for the clock eviction algorithm. */
+static struct list frame_list;      /* the list */
+static struct list_elem *clock_ptr; /* the pointer in clock algorithm */
+
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux);
 static bool     frame_less_func(const struct hash_elem *, const struct hash_elem *, void *aux);
 
@@ -26,7 +32,8 @@ struct frame_table_entry
   {
     void *kpage;               /* Kernel page, mapped to physical address */
 
-    struct hash_elem elem;     /* see ::frame_map */
+    struct hash_elem helem;    /* see ::frame_map */
+    struct list_elem lelem;    /* see ::frame_list */
 
     void *upage;               /* User (Virtual Memory) Address, pointer to page */
     struct thread *t;          /* The associated thread. */
@@ -45,6 +52,8 @@ vm_frame_init ()
 {
   lock_init (&frame_lock);
   hash_init (&frame_map, frame_hash_func, frame_less_func, NULL);
+  list_init (&frame_list);
+  clock_ptr = NULL;
 }
 
 /**
@@ -99,7 +108,8 @@ vm_frame_allocate (enum palloc_flags flags, void *upage)
   frame->pinned = true;         // can't be evicted yet
 
   // insert into hash table
-  hash_insert (&frame_map, &frame->elem);
+  hash_insert (&frame_map, &frame->helem);
+  list_push_back (&frame_list, &frame->lelem);
 
   lock_release (&frame_lock);
   return frame_page;
@@ -128,14 +138,14 @@ vm_frame_remove_entry (void *kpage)
 }
 
 /**
- * Deallocate a frame or page (internal procedure)
+ * An (internal, private) method --
+ * Deallocates a frame or page (internal procedure)
  * MUST BE CALLED with 'frame_lock' held.
  */
 void
 vm_frame_do_free (void *kpage, bool free_page)
 {
   ASSERT (lock_held_by_current_thread(&frame_lock) == true);
-
   ASSERT (is_kernel_vaddr(kpage));
   ASSERT (pg_ofs (kpage) == 0); // should be aligned
 
@@ -143,65 +153,59 @@ vm_frame_do_free (void *kpage, bool free_page)
   struct frame_table_entry f_tmp;
   f_tmp.kpage = kpage;
 
-  struct hash_elem *h = hash_find (&frame_map, &(f_tmp.elem));
+  struct hash_elem *h = hash_find (&frame_map, &(f_tmp.helem));
   if (h == NULL) {
     PANIC ("The page to be freed is not stored in the table");
   }
 
   struct frame_table_entry *f;
-  f = hash_entry(h, struct frame_table_entry, elem);
+  f = hash_entry(h, struct frame_table_entry, helem);
 
-  hash_delete (&frame_map, &f->elem);
+  hash_delete (&frame_map, &f->helem);
+  list_remove (&f->lelem);
 
   // Free resources
   if(free_page) palloc_free_page(kpage);
   free(f);
 }
 
-/** Frame Eviction Strategy */
+/** Frame Eviction Strategy : The Clock Algorithm */
+struct frame_table_entry* clock_frame_next(void);
 struct frame_table_entry* pick_frame_to_evict( uint32_t *pagedir )
 {
   size_t n = hash_size(&frame_map);
   if(n == 0) PANIC("Frame table is empty, can't happen - there is a leak somewhere");
 
-  static size_t victim_pointer = 0;
-
-  // get [victim_pointer]-th entry
-  struct hash_iterator it; hash_first(&it, &frame_map);
-  size_t i; for(i=0; i<=victim_pointer; ++i) hash_next(&it);
-
-  // scan through (the last section)
-  // TODO improve with circular linked list.
-  do {
-    struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
+  size_t it;
+  for(it = 0; it <= n + n; ++ it) // prevent infinite loop. 2n iterations is enough
+  {
+    struct frame_table_entry *e = clock_frame_next();
+    // if pinned, continue
     if(e->pinned) continue;
-
-    // if not referenced, evict
-    if(! pagedir_is_accessed(pagedir, e->upage)) {
-      return e;
+    // if referenced, give a second chance.
+    else if( pagedir_is_accessed(pagedir, e->upage)) {
+      pagedir_set_accessed(pagedir, e->upage, false);
+      continue;
     }
-    // give a second chance.
-    pagedir_set_accessed(pagedir, e->upage, false);
-    victim_pointer = (victim_pointer + 1) % n;
-  } while( hash_next(&it) );
 
-  // scan through (the first section)
-  hash_first(&it, &frame_map);
-  hash_next(&it);
-  do {
-    struct frame_table_entry *e = hash_entry(hash_cur(&it), struct frame_table_entry, elem);
-    if(e->pinned) continue;
-
-    // if not referenced, evict
-    if(! pagedir_is_accessed(pagedir, e->upage)) {
-      return e;
-    }
-    // give a second chance.
-    pagedir_set_accessed(pagedir, e->upage, false);
-    victim_pointer = (victim_pointer + 1) % n;
-  } while ( hash_next(&it) );
+    // OK, here is the victim : unreferenced since its last chance
+    return e;
+  }
 
   PANIC ("Can't evict any frame -- Not enough memory!\n");
+}
+struct frame_table_entry* clock_frame_next(void)
+{
+  if (list_empty(&frame_list))
+    PANIC("Frame table is empty, can't happen - there is a leak somewhere");
+
+  if (clock_ptr == NULL || clock_ptr == list_end(&frame_list))
+    clock_ptr = list_begin (&frame_list);
+  else
+    clock_ptr = list_next (clock_ptr);
+
+  struct frame_table_entry *e = list_entry(clock_ptr, struct frame_table_entry, lelem);
+  return e;
 }
 
 
@@ -213,13 +217,13 @@ vm_frame_set_pinned (void *kpage, bool new_value)
   // hash lookup : a temporary entry
   struct frame_table_entry f_tmp;
   f_tmp.kpage = kpage;
-  struct hash_elem *h = hash_find (&frame_map, &(f_tmp.elem));
+  struct hash_elem *h = hash_find (&frame_map, &(f_tmp.helem));
   if (h == NULL) {
     PANIC ("The frame to be pinned/unpinned does not exist");
   }
 
   struct frame_table_entry *f;
-  f = hash_entry(h, struct frame_table_entry, elem);
+  f = hash_entry(h, struct frame_table_entry, helem);
   f->pinned = new_value;
 
   lock_release (&frame_lock);
@@ -241,12 +245,12 @@ vm_frame_pin (void* kpage) {
 // Hash Functions required for [frame_map]. Uses 'kpage' as key.
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux UNUSED)
 {
-  struct frame_table_entry *entry = hash_entry(elem, struct frame_table_entry, elem);
+  struct frame_table_entry *entry = hash_entry(elem, struct frame_table_entry, helem);
   return hash_bytes( &entry->kpage, sizeof entry->kpage );
 }
 static bool frame_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-  struct frame_table_entry *a_entry = hash_entry(a, struct frame_table_entry, elem);
-  struct frame_table_entry *b_entry = hash_entry(b, struct frame_table_entry, elem);
+  struct frame_table_entry *a_entry = hash_entry(a, struct frame_table_entry, helem);
+  struct frame_table_entry *b_entry = hash_entry(b, struct frame_table_entry, helem);
   return a_entry->kpage < b_entry->kpage;
 }

@@ -57,9 +57,7 @@ void vm_supt_destroy (struct supplemental_page_table *);
 
 bool vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *kpage);
 bool vm_supt_install_zeropage (struct supplemental_page_table *supt, void *);
-
 bool vm_supt_set_swap (struct supplemental_page_table *supt, void *, swap_index_t);
-
 bool vm_supt_install_filesys (struct supplemental_page_table *supt, void *page,
     struct file * file, off_t offset, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 
