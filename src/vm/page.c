@@ -69,7 +69,7 @@ vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *
 }
 
 /**
- * Install a page (specified by the starting address `upage`)
+ * Install new a page (specified by the starting address `upage`)
  * on the supplemental page table. The page is of type ALL_ZERO,
  * indicates that all the bytes is (lazily) zero.
  */
@@ -88,11 +88,15 @@ vm_supt_install_zeropage (struct supplemental_page_table *supt, void *upage)
   prev_elem = hash_insert (&supt->page_map, &spte->elem);
   if (prev_elem == NULL) return true;
 
-  // TODO there is already an entry.
+  // there is already an entry -- impossible state
   PANIC("Duplicated SUPT entry for zeropage");
   return false;
 }
 
+/**
+ * Mark an existent page to be swapped out,
+ * and update swap_index in the SPTE.
+ */
 bool
 vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t swap_index)
 {
@@ -108,7 +112,7 @@ vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t
 
 
 /**
- * Install a page (specified by the starting address `upage`)
+ * Install a new page (specified by the starting address `upage`)
  * on the supplemental page table, of type FROM_FILESYS.
  */
 bool
@@ -132,12 +136,16 @@ vm_supt_install_filesys (struct supplemental_page_table *supt, void *upage,
   prev_elem = hash_insert (&supt->page_map, &spte->elem);
   if (prev_elem == NULL) return true;
 
-  // TODO there is already an entry.
+  // there is already an entry -- impossible state
   PANIC("Duplicated SUPT entry for filesys-page");
   return false;
 }
 
 
+/**
+ * Lookup the SUPT and find a SPTE object given the user page address.
+ * returns NULL if no such entry is found.
+ */
 struct supplemental_page_table_entry*
 vm_supt_lookup (struct supplemental_page_table *supt, void *page)
 {
@@ -150,6 +158,9 @@ vm_supt_lookup (struct supplemental_page_table *supt, void *page)
   return hash_entry(elem, struct supplemental_page_table_entry, elem);
 }
 
+/**
+ * Returns if the SUPT contains an SPTE entry given the user page address.
+ */
 bool
 vm_supt_has_entry (struct supplemental_page_table *supt, void *page)
 {
@@ -172,6 +183,9 @@ vm_supt_set_dirty (struct supplemental_page_table *supt, void *page, bool value)
 
 static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *, void *);
 
+/**
+ * Load the page, specified by the address `upage`, back into the memory.
+ */
 bool
 vm_load_page(struct supplemental_page_table *supt, uint32_t *pagedir, void *upage)
 {
@@ -331,6 +345,7 @@ static bool vm_load_page_from_filesys(struct supplemental_page_table_entry *spte
 }
 
 
+/** Pin the page. */
 void
 vm_pin_page(struct supplemental_page_table *supt, void *page)
 {
@@ -345,6 +360,7 @@ vm_pin_page(struct supplemental_page_table *supt, void *page)
   vm_frame_pin (spte->kpage);
 }
 
+/** Unpin the page. */
 void
 vm_unpin_page(struct supplemental_page_table *supt, void *page)
 {

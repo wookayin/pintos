@@ -138,14 +138,14 @@ vm_frame_remove_entry (void *kpage)
 }
 
 /**
- * Deallocate a frame or page (internal procedure)
+ * An (internal, private) method --
+ * Deallocates a frame or page (internal procedure)
  * MUST BE CALLED with 'frame_lock' held.
  */
 void
 vm_frame_do_free (void *kpage, bool free_page)
 {
   ASSERT (lock_held_by_current_thread(&frame_lock) == true);
-
   ASSERT (is_kernel_vaddr(kpage));
   ASSERT (pg_ofs (kpage) == 0); // should be aligned
 
