@@ -16,5 +16,6 @@ Team 16 : Jongwook Choi, Jaeheum Jeong
 
 ## Project 3
 
-- Virtual Memory
-- Page Table
+- Stack Growth
+- Virtual Memory (Paging)
+- Memory-Mapped Files

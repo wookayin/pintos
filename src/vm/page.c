@@ -51,12 +51,9 @@ vm_supt_install_frame (struct supplemental_page_table *supt, void *upage, void *
 
   spte->upage = upage;
   spte->kpage = kpage;
-//  printf("install frame, upage %x, kpage %x\n", upage, kpage);
   spte->status = ON_FRAME;
   spte->dirty = false;
   spte->swap_index = -1;
-
-//  printf("Install Set page %u\n", upage);
 
   struct hash_elem *prev_elem;
   prev_elem = hash_insert (&supt->page_map, &spte->elem);
@@ -101,7 +98,6 @@ vm_supt_set_swap (struct supplemental_page_table *supt, void *page, swap_index_t
 {
   struct supplemental_page_table_entry *spte;
   spte = vm_supt_lookup(supt, page);
-//  printf("SPTE %u\n", spte);
   if(spte == NULL) return false;
 
   spte->status = ON_SWAP;
@@ -256,10 +252,6 @@ vm_supt_mm_unmap(
   if(spte == NULL) {
     PANIC ("munmap - some page is missing; can't happen!");
   }
-#if 0
-  printf("[unmap] spte = %x (status = %d), upage = %x (%d), kpage = %x (%d)\n",
-      spte, spte->status, spte->upage, spte->upage, spte->kpage, spte->kpage);
-#endif
 
   // Pin the associated frame if loaded
   // otherwise, a page fault could occur while swapping in (reading the swap disk)
@@ -390,7 +382,6 @@ spte_destroy_func(struct hash_elem *elem, void *aux UNUSED)
   // Clean up the associated frame
   if (entry->kpage != NULL) {
     ASSERT (entry->status == ON_FRAME);
-//    printf("Remove entry e=%x, upage=%x, kpage=%x\n", entry, entry->upage, entry->kpage);
     vm_frame_remove_entry (entry->kpage);
   }
   else if(entry->status == ON_SWAP) {
