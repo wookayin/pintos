@@ -31,7 +31,7 @@ tests/filesys/extended/dir-vine.output: TIMEOUT = 150
 
 GETTIMEOUT = 60
 
-GETCMD = pintos -v -k -T $(GETTIMEOUT)
+GETCMD = ../../utils/pintos -v -k -T $(GETTIMEOUT)
 GETCMD += $(PINTOSOPTS)
 GETCMD += $(SIMULATOR)
 GETCMD += $(FILESYSSOURCE)
@@ -47,7 +47,7 @@ GETCMD += 2> $(TEST)-persistence.errors $(if $(VERBOSE),|tee,>) $(TEST)-persiste
 
 tests/filesys/extended/%.output: kernel.bin
 	rm -f tmp.dsk
-	pintos-mkdisk tmp.dsk --filesys-size=2
+	../../utils/pintos-mkdisk tmp.dsk --filesys-size=2
 	$(TESTCMD)
 	$(GETCMD)
 	rm -f tmp.dsk
