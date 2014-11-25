@@ -19,3 +19,10 @@ Team 16 : Jongwook Choi, Jaeheum Jeong
 - Stack Growth
 - Virtual Memory (Paging)
 - Memory-Mapped Files
+
+## Project 4
+
+- Buffer Cache
+- Extensible Files
+- Filesystem and Subdirectories
+
