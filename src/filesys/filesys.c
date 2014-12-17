@@ -1,4 +1,5 @@
 #include "filesys/filesys.h"
+#include "filesys/cache.h"
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
@@ -24,6 +25,8 @@ filesys_init (bool format)
   inode_init ();
   free_map_init ();
 
+  buffer_cache_init ();
+
   if (format)
     do_format ();
 
@@ -36,8 +39,10 @@ void
 filesys_done (void)
 {
   free_map_close ();
+
+  buffer_cache_close ();
 }
-
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
