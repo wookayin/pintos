@@ -18,6 +18,6 @@ void buffer_cache_read (block_sector_t sector, void *target);
  * Writes SECTOR_SIZE bytes of data into the disk sector
  * specified by 'sector', from `source` (user memory address).
  */
-void buffer_cache_write (block_sector_t sector, void *source);
+void buffer_cache_write (block_sector_t sector, const void *source);
 
 #endif
