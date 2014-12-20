@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "filesys/inode.h"
+#include "filesys/directory.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include <stdio.h>
@@ -62,6 +63,9 @@ void unpin_preloaded_pages(const void *, size_t);
 #ifdef FILESYS
 bool sys_chdir(const char *filename);
 bool sys_mkdir(const char *filename);
+bool sys_readdir(int fd, char *filename);
+bool sys_isdir(int fd);
+int sys_inumber(int fd);
 #endif
 
 struct lock filesys_lock;
@@ -296,14 +300,38 @@ syscall_handler (struct intr_frame *f)
 
   case SYS_READDIR: // 17
     {
+      int fd;
+      char *name;
+      int return_code;
+
+      memread_user(f->esp + 4, &fd, sizeof(fd));
+      memread_user(f->esp + 8, &name, sizeof(name));
+
+      return_code = sys_readdir(fd, name);
+      f->eax = return_code;
+      break;
     }
 
   case SYS_ISDIR: // 18
     {
+      int fd;
+      int return_code;
+
+      memread_user(f->esp + 4, &fd, sizeof(fd));
+      return_code = sys_isdir(fd);
+      f->eax = return_code;
+      break;
     }
 
   case SYS_INUMBER: // 19
     {
+      int fd;
+      int return_code;
+
+      memread_user(f->esp + 4, &fd, sizeof(fd));
+      return_code = sys_inumber(fd);
+      f->eax = return_code;
+      break;
     }
 
 #endif
@@ -405,6 +433,13 @@ int sys_open(const char* file) {
 
   fd->file = file_opened; //file save
 
+  // directory handling
+  struct inode *inode = file_get_inode(fd->file);
+  if(inode != NULL && inode_is_directory(inode)) {
+    fd->dir = dir_open(inode);
+  }
+  else fd->dir = NULL;
+
   struct list* fd_list = &thread_current()->file_descriptors;
   if (list_empty(fd_list)) {
     // 0, 1, 2 are reserved for stdin, stdout, stderr
@@ -469,6 +504,7 @@ void sys_close(int fd) {
 
   if(file_d && file_d->file) {
     file_close(file_d->file);
+    if(file_d->dir) dir_close(file_d->dir);
     list_remove(&(file_d->elem));
     palloc_free_page(file_d);
   }
@@ -828,5 +864,50 @@ bool sys_mkdir(const char *filename)
   return return_code;
 }
 
+bool sys_readdir(int fd, char *name)
+{
+  struct file_desc* file_d;
+  bool ret = false;
+
+  lock_acquire (&filesys_lock);
+  file_d = find_file_desc(thread_current(), fd);
+  if (file_d == NULL) goto done;
+
+  struct inode *inode;
+  inode = file_get_inode(file_d->file); // file descriptor -> inode
+  if(inode == NULL) goto done;
+
+  // check whether it is a valid directory
+  if(! inode_is_directory(inode)) goto done;
+
+  ASSERT (file_d->dir != NULL); // see sys_open()
+  ret = dir_readdir (file_d->dir, name);
+
+done:
+  lock_release (&filesys_lock);
+  return ret;
+}
+
+bool sys_isdir(int fd)
+{
+  lock_acquire (&filesys_lock);
+
+  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  bool ret = inode_is_directory (file_get_inode(file_d->file));
+
+  lock_release (&filesys_lock);
+  return ret;
+}
+
+int sys_inumber(int fd)
+{
+  lock_acquire (&filesys_lock);
+
+  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  int ret = (int) inode_get_inumber (file_get_inode(file_d->file));
+
+  lock_release (&filesys_lock);
+  return ret;
+}
 
 #endif

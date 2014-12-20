@@ -40,6 +40,7 @@ struct file_desc {
   int id;
   struct list_elem elem;
   struct file* file;
+  struct dir* dir;        /* In case of directory opening, dir != NULL */
 };
 
 #ifdef VM

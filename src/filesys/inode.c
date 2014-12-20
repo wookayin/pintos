@@ -423,6 +423,12 @@ inode_length (const struct inode *inode)
   return inode->data.length;
 }
 
+/* Returns whether the file is directory or not. */
+bool
+inode_is_directory (const struct inode *inode)
+{
+  return inode->data.is_dir;
+}
 
 static
 bool inode_allocate (struct inode_disk *disk_inode)
