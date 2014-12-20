@@ -33,7 +33,8 @@ static int32_t get_user (const uint8_t *uaddr);
 static bool put_user (uint8_t *udst, uint8_t byte);
 static int memread_user (void *src, void *des, size_t bytes);
 
-static struct file_desc* find_file_desc(struct thread *, int fd);
+enum fd_search_filter { FD_FILE = 1, FD_DIRECTORY = 2 };
+static struct file_desc* find_file_desc(struct thread *, int fd, enum fd_search_filter flag);
 
 void sys_halt (void);
 void sys_exit (int);
@@ -458,7 +459,7 @@ int sys_filesize(int fd) {
   struct file_desc* file_d;
 
   lock_acquire (&filesys_lock);
-  file_d = find_file_desc(thread_current(), fd);
+  file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
   if(file_d == NULL) {
     lock_release (&filesys_lock);
@@ -472,7 +473,7 @@ int sys_filesize(int fd) {
 
 void sys_seek(int fd, unsigned position) {
   lock_acquire (&filesys_lock);
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
   if(file_d && file_d->file) {
     file_seek(file_d->file, position);
@@ -485,7 +486,7 @@ void sys_seek(int fd, unsigned position) {
 
 unsigned sys_tell(int fd) {
   lock_acquire (&filesys_lock);
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
   unsigned ret;
   if(file_d && file_d->file) {
@@ -500,7 +501,7 @@ unsigned sys_tell(int fd) {
 
 void sys_close(int fd) {
   lock_acquire (&filesys_lock);
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
   if(file_d && file_d->file) {
     file_close(file_d->file);
@@ -531,7 +532,7 @@ int sys_read(int fd, void *buffer, unsigned size) {
   }
   else {
     // read from file
-    struct file_desc* file_d = find_file_desc(thread_current(), fd);
+    struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
     if(file_d && file_d->file) {
 
@@ -567,7 +568,7 @@ int sys_write(int fd, const void *buffer, unsigned size) {
   }
   else {
     // write into file
-    struct file_desc* file_d = find_file_desc(thread_current(), fd);
+    struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
 
     if(file_d && file_d->file) {
 #ifdef VM
@@ -600,7 +601,7 @@ mmapid_t sys_mmap(int fd, void *upage) {
 
   /* 1. Open file */
   struct file *f = NULL;
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
   if(file_d && file_d->file) {
     // reopen file so that it doesn't interfere with process itself
     // it will be store in the mmap_desc struct (later closed on munmap)
@@ -765,7 +766,7 @@ memread_user (void *src, void *dst, size_t bytes)
 /****************** Helper Functions ********************/
 
 static struct file_desc*
-find_file_desc(struct thread *t, int fd)
+find_file_desc(struct thread *t, int fd, enum fd_search_filter flag)
 {
   ASSERT (t != NULL);
 
@@ -781,7 +782,11 @@ find_file_desc(struct thread *t, int fd)
     {
       struct file_desc *desc = list_entry(e, struct file_desc, elem);
       if(desc->id == fd) {
-        return desc;
+        // found. filter by flag to distinguish file and directorys
+        if (desc->dir && (flag & FD_DIRECTORY) )
+          return desc;
+        else if(desc->dir == NULL && (flag & FD_FILE) )
+          return desc;
       }
     }
   }
@@ -870,7 +875,7 @@ bool sys_readdir(int fd, char *name)
   bool ret = false;
 
   lock_acquire (&filesys_lock);
-  file_d = find_file_desc(thread_current(), fd);
+  file_d = find_file_desc(thread_current(), fd, FD_DIRECTORY);
   if (file_d == NULL) goto done;
 
   struct inode *inode;
@@ -892,7 +897,7 @@ bool sys_isdir(int fd)
 {
   lock_acquire (&filesys_lock);
 
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE | FD_DIRECTORY);
   bool ret = inode_is_directory (file_get_inode(file_d->file));
 
   lock_release (&filesys_lock);
@@ -903,7 +908,7 @@ int sys_inumber(int fd)
 {
   lock_acquire (&filesys_lock);
 
-  struct file_desc* file_d = find_file_desc(thread_current(), fd);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE | FD_DIRECTORY);
   int ret = (int) inode_get_inumber (file_get_inode(file_d->file));
 
   lock_release (&filesys_lock);
