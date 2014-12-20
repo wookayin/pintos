@@ -1,3 +1,4 @@
+#include "threads/thread.h"
 #include "filesys/filesys.h"
 #include "filesys/cache.h"
 #include <debug.h>
@@ -64,7 +65,7 @@ filesys_create (const char *path, off_t initial_size, bool is_dir)
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, is_dir)
-                  && dir_add (dir, path, inode_sector));
+                  && dir_add (dir, file_name, inode_sector));
 
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
@@ -111,6 +112,22 @@ filesys_remove (const char *name)
   dir_close (dir);
 
   return success;
+}
+
+/* Change CWD for the current thread. */
+bool
+filesys_chdir (const char *name)
+{
+  struct dir *dir = dir_open_path (name);
+
+  if(dir == NULL) {
+    return false;
+  }
+
+  // switch CWD
+  dir_close (thread_current()->cwd);
+  thread_current()->cwd = dir;
+  return true;
 }
 
 /* Formats the file system. */

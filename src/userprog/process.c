@@ -280,6 +280,9 @@ process_exit (void)
   }
 #endif
 
+  /* Close CWD */
+  if(cur->cwd) dir_close (cur->cwd);
+
   // 2. clean up pcb object of all children processes
   struct list *child_list = &cur->child_list;
   while (!list_empty(child_list)) {
@@ -535,6 +538,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
+
+  /* Set up CWD */
+  t->cwd = dir_open_root();
 
   /* Set up stack. */
   if (!setup_stack (esp))

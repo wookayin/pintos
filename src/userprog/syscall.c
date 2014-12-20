@@ -4,6 +4,7 @@
 #include "userprog/process.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/inode.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include <stdio.h>
@@ -56,6 +57,11 @@ static struct mmap_desc* find_mmap_desc(struct thread *, mmapid_t fd);
 
 void preload_and_pin_pages(const void *, size_t);
 void unpin_preloaded_pages(const void *, size_t);
+#endif
+
+#ifdef FILESYS
+bool sys_chdir(const char *filename);
+bool sys_mkdir(const char *filename);
 #endif
 
 struct lock filesys_lock;
@@ -262,6 +268,44 @@ syscall_handler (struct intr_frame *f)
       sys_munmap(mid);
       break;
     }
+#endif
+#ifdef FILESYS
+  case SYS_CHDIR: // 15
+    {
+      const char* filename;
+      int return_code;
+
+      memread_user(f->esp + 4, &filename, sizeof(filename));
+
+      return_code = sys_chdir(filename);
+      f->eax = return_code;
+      break;
+    }
+
+  case SYS_MKDIR: // 16
+    {
+      const char* filename;
+      int return_code;
+
+      memread_user(f->esp + 4, &filename, sizeof(filename));
+
+      return_code = sys_mkdir(filename);
+      f->eax = return_code;
+      break;
+    }
+
+  case SYS_READDIR: // 17
+    {
+    }
+
+  case SYS_ISDIR: // 18
+    {
+    }
+
+  case SYS_INUMBER: // 19
+    {
+    }
+
 #endif
 
 
@@ -755,5 +799,34 @@ void unpin_preloaded_pages(const void *buffer, size_t size)
     vm_unpin_page (supt, upage);
   }
 }
+
+#endif
+
+#ifdef FILESYS
+
+bool sys_chdir(const char *filename)
+{
+  bool return_code;
+  check_user((const uint8_t*) filename);
+
+  lock_acquire (&filesys_lock);
+  return_code = filesys_chdir(filename);
+  lock_release (&filesys_lock);
+
+  return return_code;
+}
+
+bool sys_mkdir(const char *filename)
+{
+  bool return_code;
+  check_user((const uint8_t*) filename);
+
+  lock_acquire (&filesys_lock);
+  return_code = filesys_create(filename, 0, true);
+  lock_release (&filesys_lock);
+
+  return return_code;
+}
+
 
 #endif

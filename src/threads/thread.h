@@ -132,6 +132,9 @@ struct thread
     struct list mmap_list;              /* List of struct mmap_desc. */
 #endif
 
+    // Project 4: CWD.
+    struct dir *cwd;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
