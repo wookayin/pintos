@@ -11,7 +11,7 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
-#define DIRECT_BLOCKS_COUNT 124
+#define DIRECT_BLOCKS_COUNT 123
 #define INDIRECT_BLOCKS_PER_SECTOR 128
 
 /* On-disk inode.
@@ -23,6 +23,7 @@ struct inode_disk
     block_sector_t indirect_block;
     block_sector_t doubly_indirect_block;
 
+    bool is_dir;
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
   };
@@ -144,7 +145,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -160,6 +161,7 @@ inode_create (block_sector_t sector, off_t length)
     {
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+      disk_inode->is_dir = is_dir;
       if (inode_allocate (disk_inode))
         {
           buffer_cache_write (sector, disk_inode);

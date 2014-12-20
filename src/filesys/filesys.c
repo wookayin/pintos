@@ -43,19 +43,29 @@ filesys_done (void)
   buffer_cache_close ();
 }
 
-/* Creates a file named NAME with the given INITIAL_SIZE.
+/* Creates a file or directory (set by `is_dir`) of
+   full path `path` with the given `initial_size`.
+   The path to file consists of two parts: path directory and filename.
+
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size)
+filesys_create (const char *path, off_t initial_size, bool is_dir)
 {
   block_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+
+  // split path and name
+  char directory[ strlen(path) ];
+  char file_name[ strlen(path) ];
+  split_path_filename(path, directory, file_name);
+  struct dir *dir = dir_open_path (directory);
+
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
+                  && inode_create (inode_sector, initial_size, is_dir)
+                  && dir_add (dir, path, inode_sector));
+
   if (!success && inode_sector != 0)
     free_map_release (inode_sector, 1);
   dir_close (dir);
@@ -71,11 +81,15 @@ filesys_create (const char *name, off_t initial_size)
 struct file *
 filesys_open (const char *name)
 {
-  struct dir *dir = dir_open_root ();
+  char directory[ strlen(name) ];
+  char file_name[ strlen(name) ];
+  split_path_filename(name, directory, file_name);
+  struct dir *dir = dir_open_path (directory);
+
   struct inode *inode = NULL;
 
   if (dir != NULL)
-    dir_lookup (dir, name, &inode);
+    dir_lookup (dir, file_name, &inode);
   dir_close (dir);
 
   return file_open (inode);
@@ -88,13 +102,17 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name)
 {
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
+  char directory[ strlen(name) ];
+  char file_name[ strlen(name) ];
+  split_path_filename(name, directory, file_name);
+  struct dir *dir = dir_open_path (directory);
+
+  bool success = (dir != NULL && dir_remove (dir, file_name));
   dir_close (dir);
 
   return success;
 }
-
+
 /* Formats the file system. */
 static void
 do_format (void)
