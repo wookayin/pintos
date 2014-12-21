@@ -65,11 +65,27 @@ split_path_filename(const char *path,
 
 
 /* Creates a directory with space for ENTRY_CNT entries in the
-   given SECTOR.  Returns true if successful, false on failure. */
+   given SECTOR. The parent directory block sector is PARENT_SECTOR.
+   Returns true if successful, false on failure. */
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), /*is_dir*/ true);
+  bool success = true;
+  success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), /*is_dir*/ true);
+  if(!success) return false;
+
+  // The first (offset 0) dir entry is for parent directory; do self-referencing
+  // Actual parent directory will be set on execution of dir_add()
+  struct dir *dir = dir_open( inode_open(sector) );
+  ASSERT (dir != NULL);
+  struct dir_entry e;
+  e.inode_sector = sector;
+  if (inode_write_at(dir->inode, &e, sizeof e, 0) != sizeof e) {
+    success = false;
+  }
+  dir_close (dir);
+
+  return success;
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -81,7 +97,7 @@ dir_open (struct inode *inode)
   if (inode != NULL && dir != NULL)
     {
       dir->inode = inode;
-      dir->pos = 0;
+      dir->pos = sizeof (struct dir_entry); // 0-pos is for parent directory
       return dir;
     }
   else
@@ -194,7 +210,8 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+  for (ofs = sizeof e; /* 0-pos is for parent directory */
+       inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
        ofs += sizeof e)
     if (e.in_use && !strcmp (name, e.name))
       {
@@ -214,7 +231,8 @@ dir_is_empty (const struct dir *dir)
   struct dir_entry e;
   off_t ofs;
 
-  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+  for (ofs = sizeof e; /* 0-pos is for parent directory */
+       inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
        ofs += sizeof e)
   {
     if (e.in_use)
@@ -236,8 +254,19 @@ dir_lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  if (lookup (dir, name, &e, NULL))
+  if (strcmp (name, ".") == 0) {
+    // current directory
+    *inode = inode_reopen (dir->inode);
+  }
+  else if (strcmp (name, "..") == 0) {
+    // parent directory : the information is stored at the first (0-pos) entry.
+    inode_read_at (dir->inode, &e, sizeof e, 0);
     *inode = inode_open (e.inode_sector);
+  }
+  else if (lookup (dir, name, &e, NULL)) {
+    // normal lookup. lookuped entry is stored into e
+    *inode = inode_open (e.inode_sector);
+  }
   else
     *inode = NULL;
 
@@ -245,13 +274,14 @@ dir_lookup (const struct dir *dir, const char *name,
 }
 
 /* Adds a file named NAME to DIR, which must not already contain a
-   file by that name.  The file's inode is in sector
-   INODE_SECTOR.
+   file by that name.  The file's inode is in sector INODE_SECTOR.
+   If the file is a directory, IS_DIR is set to true.
+
    Returns true if successful, false on failure.
    Fails if NAME is invalid (i.e. too long) or a disk or memory
    error occurs. */
 bool
-dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
+dir_add (struct dir *dir, const char *name, block_sector_t inode_sector, bool is_dir)
 {
   struct dir_entry e;
   off_t ofs;
@@ -267,6 +297,20 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
     goto done;
+
+  // update the child directory [inode_sector] has a parent directory [dir]
+  if (is_dir)
+  {
+    /* e is a parent-directory-entry here */
+    struct dir *child_dir = dir_open( inode_open(inode_sector) );
+    if(child_dir == NULL) goto done;
+    e.inode_sector = inode_get_inumber( dir_get_inode(dir) );
+    if (inode_write_at(child_dir->inode, &e, sizeof e, 0) != sizeof e) {
+      dir_close (child_dir);
+      goto done;
+    }
+    dir_close (child_dir);
+  }
 
   /* Set OFS to offset of free slot.
      If there are no free slots, then it will be set to the
