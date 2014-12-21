@@ -443,7 +443,7 @@ bool inode_allocate (struct inode_disk *disk_inode)
   return inode_reserve (disk_inode, disk_inode->length);
 }
 
-static void
+static bool
 inode_reserve_indirect (block_sector_t* p_entry, size_t num_sectors, int level)
 {
   static char zeros[BLOCK_SECTOR_SIZE];
@@ -454,10 +454,11 @@ inode_reserve_indirect (block_sector_t* p_entry, size_t num_sectors, int level)
   if (level == 0) {
     // base case : allocate a single sector if necessary and put it into the block
     if (*p_entry == 0) {
-      free_map_allocate (1, p_entry);
+      if(! free_map_allocate (1, p_entry))
+        return false;
       buffer_cache_write (*p_entry, zeros);
     }
-    return;
+    return true;
   }
 
   struct inode_indirect_block_sector indirect_block;
@@ -473,12 +474,14 @@ inode_reserve_indirect (block_sector_t* p_entry, size_t num_sectors, int level)
 
   for (i = 0; i < l; ++ i) {
     size_t subsize = min(num_sectors, unit);
-    inode_reserve_indirect (& indirect_block.blocks[i], subsize, level - 1);
+    if(! inode_reserve_indirect (& indirect_block.blocks[i], subsize, level - 1))
+      return false;
     num_sectors -= subsize;
   }
 
   ASSERT (num_sectors == 0);
   buffer_cache_write (*p_entry, &indirect_block);
+  return true;
 }
 
 /**
@@ -499,7 +502,8 @@ inode_reserve (struct inode_disk *disk_inode, off_t length)
   l = min(num_sectors, DIRECT_BLOCKS_COUNT * 1);
   for (i = 0; i < l; ++ i) {
     if (disk_inode->direct_blocks[i] == 0) { // unoccupied
-      free_map_allocate (1, &disk_inode->direct_blocks[i]);
+      if(! free_map_allocate (1, &disk_inode->direct_blocks[i]))
+        return false;
       buffer_cache_write (disk_inode->direct_blocks[i], zeros);
     }
   }
@@ -508,13 +512,15 @@ inode_reserve (struct inode_disk *disk_inode, off_t length)
 
   // (2) a single indirect block
   l = min(num_sectors, 1 * INDIRECT_BLOCKS_PER_SECTOR);
-  inode_reserve_indirect (& disk_inode->indirect_block, l, 1);
+  if(! inode_reserve_indirect (& disk_inode->indirect_block, l, 1))
+    return false;
   num_sectors -= l;
   if(num_sectors == 0) return true;
 
   // (3) a single doubly indirect block
   l = min(num_sectors, 1 * INDIRECT_BLOCKS_PER_SECTOR * INDIRECT_BLOCKS_PER_SECTOR);
-  inode_reserve_indirect (& disk_inode->doubly_indirect_block, l, 2);
+  if(! inode_reserve_indirect (& disk_inode->doubly_indirect_block, l, 2))
+    return false;
   num_sectors -= l;
   if(num_sectors == 0) return true;
 
