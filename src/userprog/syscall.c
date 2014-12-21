@@ -349,14 +349,6 @@ syscall_handler (struct intr_frame *f)
 
 }
 
-static bool page_available(void) {
-  // dirty hack: check if there remains a free page
-  void *p = palloc_get_page (0);
-  if(p == NULL) return false;
-  else palloc_free_page (p);
-  return true;
-}
-
 /****************** System Call Implementations ********************/
 
 void sys_halt(void) {
@@ -404,7 +396,6 @@ bool sys_create(const char* filename, unsigned initial_size) {
 
   // memory validation
   check_user((const uint8_t*) filename);
-  if (!page_available()) return false;
 
   lock_acquire (&filesys_lock);
   return_code = filesys_create(filename, initial_size, false);
@@ -870,7 +861,6 @@ bool sys_mkdir(const char *filename)
 {
   bool return_code;
   check_user((const uint8_t*) filename);
-  if (!page_available()) return false;
 
   lock_acquire (&filesys_lock);
   return_code = filesys_create(filename, 0, true);
