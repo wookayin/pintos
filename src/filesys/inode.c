@@ -430,6 +430,13 @@ inode_is_directory (const struct inode *inode)
   return inode->data.is_dir;
 }
 
+/* Returns whether the file is removed or not. */
+bool
+inode_is_removed (const struct inode *inode)
+{
+  return inode->removed;
+}
+
 static
 bool inode_allocate (struct inode_disk *disk_inode)
 {

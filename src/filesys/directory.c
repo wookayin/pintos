@@ -143,6 +143,12 @@ dir_open_path (const char *path)
     curr = next;
   }
 
+  // prevent from opening removed directories
+  if (inode_is_removed (dir_get_inode(curr))) {
+    dir_close(curr);
+    return NULL;
+  }
+
   return curr;
 }
 
@@ -169,6 +175,7 @@ dir_close (struct dir *dir)
 struct inode *
 dir_get_inode (struct dir *dir)
 {
+  ASSERT (dir != NULL);
   return dir->inode;
 }
 

@@ -86,12 +86,22 @@ filesys_open (const char *name)
   char file_name[ strlen(name) ];
   split_path_filename(name, directory, file_name);
   struct dir *dir = dir_open_path (directory);
-
   struct inode *inode = NULL;
 
-  if (dir != NULL)
+  // removed directory handling
+  if (dir == NULL) return NULL;
+
+  if (strlen(file_name) > 0) {
     dir_lookup (dir, file_name, &inode);
-  dir_close (dir);
+    dir_close (dir);
+  }
+  else { // empty filename : just return the directory
+    inode = dir_get_inode (dir);
+  }
+
+  // removed file handling
+  if (inode == NULL || inode_is_removed (inode))
+    return NULL;
 
   return file_open (inode);
 }
