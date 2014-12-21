@@ -82,8 +82,11 @@ filesys_create (const char *path, off_t initial_size, bool is_dir)
 struct file *
 filesys_open (const char *name)
 {
-  char directory[ strlen(name) ];
-  char file_name[ strlen(name) ];
+  int l = strlen(name);
+  if (l == 0) return NULL;
+
+  char directory[ l + 1 ];
+  char file_name[ l + 1 ];
   split_path_filename(name, directory, file_name);
   struct dir *dir = dir_open_path (directory);
   struct inode *inode = NULL;

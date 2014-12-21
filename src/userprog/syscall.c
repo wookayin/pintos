@@ -446,7 +446,7 @@ int sys_open(const char* file) {
   // directory handling
   struct inode *inode = file_get_inode(fd->file);
   if(inode != NULL && inode_is_directory(inode)) {
-    fd->dir = dir_open(inode);
+    fd->dir = dir_open( inode_reopen(inode) );
   }
   else fd->dir = NULL;
 
@@ -510,7 +510,7 @@ unsigned sys_tell(int fd) {
 
 void sys_close(int fd) {
   lock_acquire (&filesys_lock);
-  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE);
+  struct file_desc* file_d = find_file_desc(thread_current(), fd, FD_FILE | FD_DIRECTORY);
 
   if(file_d && file_d->file) {
     file_close(file_d->file);
@@ -792,9 +792,9 @@ find_file_desc(struct thread *t, int fd, enum fd_search_filter flag)
       struct file_desc *desc = list_entry(e, struct file_desc, elem);
       if(desc->id == fd) {
         // found. filter by flag to distinguish file and directorys
-        if (desc->dir && (flag & FD_DIRECTORY) )
+        if (desc->dir != NULL && (flag & FD_DIRECTORY) )
           return desc;
-        else if(desc->dir == NULL && (flag & FD_FILE) )
+        else if (desc->dir == NULL && (flag & FD_FILE) )
           return desc;
       }
     }
