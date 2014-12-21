@@ -23,6 +23,7 @@ struct process_control_block {
   const char* cmdline;      /* The command line of this process being executed */
 
   struct list_elem elem;    /* element for thread.child_list */
+  struct thread* parent_thread;    /* the parent process. */
 
   bool waiting;             /* indicates whether parent process is waiting on this. */
   bool exited;              /* indicates whether the process is done (exited). */

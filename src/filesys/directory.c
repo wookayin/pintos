@@ -64,8 +64,7 @@ split_path_filename(const char *path,
 }
 
 
-/* Creates a directory with space for ENTRY_CNT entries in the
-   given SECTOR. The parent directory block sector is PARENT_SECTOR.
+/* Creates a directory with space for ENTRY_CNT entries in the given SECTOR.
    Returns true if successful, false on failure. */
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)

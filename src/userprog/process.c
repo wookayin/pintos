@@ -79,6 +79,7 @@ process_execute (const char *cmdline)
   // so we have to postpone afterward actions (such as putting 'pcb'
   // alongwith (determined) 'pid' into 'child_list'), using context switching.
   pcb->pid = PID_INITIALIZING;
+  pcb->parent_thread = thread_current();
 
   pcb->cmdline = cmdline_copy;
   pcb->waiting = false;
@@ -159,6 +160,14 @@ start_process (void *pcb_)
   }
   palloc_free_page (cmdline_tokens);
 
+  /* Set up CWD */
+  if (pcb->parent_thread != NULL && pcb->parent_thread->cwd != NULL) {
+    // child process inherits the CWD
+    t->cwd = dir_reopen(pcb->parent_thread->cwd);
+  }
+  else {
+    t->cwd = dir_open_root();
+  }
 
 finish_step:
 
@@ -296,6 +305,7 @@ process_exit (void)
       // the child process becomes an orphan.
       // do not free pcb yet, postpone until the child terminates
       pcb->orphan = true;
+      pcb->parent_thread = NULL;
     }
   }
 
@@ -538,9 +548,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
-  /* Set up CWD */
-  t->cwd = dir_open_root();
 
   /* Set up stack. */
   if (!setup_stack (esp))
