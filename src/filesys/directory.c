@@ -207,6 +207,22 @@ lookup (const struct dir *dir, const char *name,
   return false;
 }
 
+/* Returns whether the DIR is empty. */
+bool
+dir_is_empty (const struct dir *dir)
+{
+  struct dir_entry e;
+  off_t ofs;
+
+  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+       ofs += sizeof e)
+  {
+    if (e.in_use)
+      return false;
+  }
+  return true;
+}
+
 /* Searches DIR for a file with the given NAME
    and returns true if one exists, false otherwise.
    On success, sets *INODE to an inode for the file, otherwise to
@@ -296,6 +312,15 @@ dir_remove (struct dir *dir, const char *name)
   inode = inode_open (e.inode_sector);
   if (inode == NULL)
     goto done;
+
+  /* Prevent removing non-empty directory. */
+  if (inode_is_directory (inode)) {
+    // target : the directory to be removed. (dir : the base directory)
+    struct dir *target = dir_open (inode);
+    bool is_empty = dir_is_empty (target);
+    dir_close (target);
+    if (! is_empty) goto done; // can't delete
+  }
 
   /* Erase directory entry. */
   e.in_use = false;
