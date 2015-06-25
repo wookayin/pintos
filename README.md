@@ -1,7 +1,11 @@
 PintOS Project
 ==============
 
-Team 16 : Jongwook Choi, Jaeheum Jeong
+This is a private output of 'Operating Systems' coursework, [PintOS][pintos].
+
+DISCLAIMER: DO NOT EVER USE this for your coursework.
+
+[pintos]: http://web.stanford.edu/class/cs140/projects/pintos/pintos.html
 
 ## Project 1
 
@@ -25,4 +29,3 @@ Team 16 : Jongwook Choi, Jaeheum Jeong
 - Buffer Cache
 - Extensible Files
 - Filesystem and Subdirectories
-
